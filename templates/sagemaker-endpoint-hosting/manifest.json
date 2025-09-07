@@ -1,0 +1,56 @@
+{
+  "project_type": "sagemaker-endpoint-hosting",
+  "version": "1.0.0",
+  "description": "Template for SageMaker endpoint hosting projects",
+  "ci_cd_config": {
+    "pipeline_type": "inference",
+    "stages": ["validate", "build", "deploy", "test", "package", "release"],
+    "artifacts": [
+      "inference_handler.py",
+      "requirements.txt",
+      "model_artifacts/",
+      "endpoint_config.json",
+      "deployment_config.json"
+    ],
+    "zip_naming": "candidate-PR-{PR_ID}-{COMMIT_ID}-{TIMESTAMP}.zip",
+    "stable_zip_naming": "stable-{TIMESTAMP}.zip"
+  },
+  "sagemaker_config": {
+    "framework": "pytorch",
+    "instance_type": "ml.t2.medium",
+    "initial_instance_count": 1,
+    "max_instance_count": 10,
+    "auto_scaling": true,
+    "endpoint_config": {
+      "production_variants": [
+        {
+          "variant_name": "primary",
+          "model_name": "model-name",
+          "initial_instance_count": 1,
+          "instance_type": "ml.t2.medium",
+          "initial_variant_weight": 100
+        }
+      ]
+    }
+  },
+  "dependencies": [
+    "torch",
+    "torchvision",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "boto3",
+    "sagemaker",
+    "flask",
+    "gunicorn"
+  ],
+  "file_structure": {
+    "src/": "Source code directory",
+    "src/inference/": "Inference handler scripts",
+    "src/utils/": "Utility functions",
+    "tests/": "Unit tests",
+    "requirements.txt": "Python dependencies",
+    "Dockerfile": "Container configuration",
+    ".gitlab-ci.yml": "CI/CD pipeline configuration"
+  }
+}

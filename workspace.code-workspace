@@ -1,0 +1,208 @@
+{
+    "folders": [
+        {
+            "name": "GitLab-SageMaker-CICD",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "terminal.integrated.defaultProfile.windows": "Git Bash",
+        "terminal.integrated.profiles.windows": {
+            "Git Bash": {
+                "path": "C:\\Program Files\\Git\\bin\\bash.exe",
+                "args": ["--login"]
+            }
+        },
+        "git.defaultCloneDirectory": "./repos",
+        "files.exclude": {
+            "**/.terraform": true,
+            "**/.terraform.lock.hcl": true,
+            "**/terraform.tfstate": true,
+            "**/terraform.tfstate.backup": true,
+            "**/.terraform.tfstate.lock.info": true
+        },
+        "search.exclude": {
+            "**/.terraform": true,
+            "**/terraform.tfstate*": true
+        },
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "python.defaultInterpreterPath": "python3",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "black",
+        "yaml.schemas": {
+            "https://json.schemastore.org/gitlab-ci": ".gitlab-ci.yml"
+        },
+        "files.associations": {
+            "*.tf": "terraform",
+            "*.tfvars": "terraform",
+            "*.hcl": "terraform"
+        },
+        "terraform.experimentalFeatures": {
+            "validateOnSave": true,
+            "prefillRequiredFields": true
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "hashicorp.terraform",
+            "ms-python.python",
+            "ms-python.flake8",
+            "ms-python.black-formatter",
+            "redhat.vscode-yaml",
+            "ms-vscode.vscode-json",
+            "github.vscode-pull-request-github",
+            "gitlab.gitlab-workflow",
+            "ms-kubernetes-tools.vscode-kubernetes-tools",
+            "amazonwebservices.aws-toolkit-vscode"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "OpenTofu Init",
+                "type": "shell",
+                "command": "/c/Users/ruben/AppData/Local/Microsoft/WinGet/Packages/OpenTofu.Tofu_Microsoft.Winget.Source_8wekyb3d8bbwe/tofu",
+                "args": ["init"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "OpenTofu Plan",
+                "type": "shell",
+                "command": "/c/Users/ruben/AppData/Local/Microsoft/WinGet/Packages/OpenTofu.Tofu_Microsoft.Winget.Source_8wekyb3d8bbwe/tofu",
+                "args": ["plan"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "OpenTofu Apply",
+                "type": "shell",
+                "command": "/c/Users/ruben/AppData/Local/Microsoft/WinGet/Packages/OpenTofu.Tofu_Microsoft.Winget.Source_8wekyb3d8bbwe/tofu",
+                "args": ["apply", "-auto-approve"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "OpenTofu Destroy",
+                "type": "shell",
+                "command": "/c/Users/ruben/AppData/Local/Microsoft/WinGet/Packages/OpenTofu.Tofu_Microsoft.Winget.Source_8wekyb3d8bbwe/tofu",
+                "args": ["destroy", "-auto-approve"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "SSH to GitLab Server",
+                "type": "shell",
+                "command": "ssh",
+                "args": ["-i", "~/.ssh/id_rsa", "ubuntu@44.245.144.202"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": true,
+                    "panel": "new"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "Check GitLab Status",
+                "type": "shell",
+                "command": "ssh",
+                "args": ["-i", "~/.ssh/id_rsa", "-o", "StrictHostKeyChecking=no", "ubuntu@44.245.144.202", "sudo gitlab-ctl status"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "Get GitLab Root Password",
+                "type": "shell",
+                "command": "ssh",
+                "args": ["-i", "~/.ssh/id_rsa", "-o", "StrictHostKeyChecking=no", "ubuntu@44.245.144.202", "sudo cat /etc/gitlab/initial_root_password"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            },
+            {
+                "label": "Open GitLab in Browser",
+                "type": "shell",
+                "command": "start",
+                "args": ["http://44.245.144.202"],
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "never",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "problemMatcher": []
+            }
+        ]
+    },
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Debug Python Training Script",
+                "type": "python",
+                "request": "launch",
+                "program": "${workspaceFolder}/src/training/train.py",
+                "args": [
+                    "--data-path", "/opt/ml/input/data",
+                    "--model-dir", "/opt/ml/model",
+                    "--n-estimators", "100",
+                    "--max-depth", "10"
+                ],
+                "console": "integratedTerminal",
+                "cwd": "${workspaceFolder}"
+            },
+            {
+                "name": "Debug Python Inference Script",
+                "type": "python",
+                "request": "launch",
+                "program": "${workspaceFolder}/src/inference/inference.py",
+                "console": "integratedTerminal",
+                "cwd": "${workspaceFolder}"
+            }
+        ]
+    }
+}

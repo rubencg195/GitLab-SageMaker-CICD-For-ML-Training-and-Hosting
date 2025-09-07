@@ -1,0 +1,358 @@
+# GitLab CI/CD Pipeline for SageMaker ML Training and Deployment
+# This pipeline automatically trains models and deploys endpoints on every commit/merge
+
+stages:
+  - validate
+  - build
+  - train
+  - register
+  - deploy
+  - test
+  - package
+  - release
+
+variables:
+  AWS_DEFAULT_REGION: "us-east-1"
+  SAGEMAKER_ROLE_ARN: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/SageMakerExecutionRole"
+  MODEL_PACKAGE_GROUP_NAME: "ml-models"
+  S3_BUCKET: "ml-training-data-${AWS_ACCOUNT_ID}"
+  PYTHON_VERSION: "3.8"
+
+# Cache Python dependencies
+cache:
+  paths:
+    - .venv/
+    - __pycache__/
+    - .pytest_cache/
+
+# Base image for all jobs
+image: python:${PYTHON_VERSION}
+
+# Stage 1: Code Validation
+validate_code:
+  stage: validate
+  before_script:
+    - pip install --upgrade pip
+    - pip install flake8 black pytest
+  script:
+    - echo "Validating code quality..."
+    - flake8 src/ --max-line-length=88 --extend-ignore=E203,W503
+    - black --check src/
+    - python -m pytest tests/unit/ -v
+  only:
+    - branches
+    - merge_requests
+
+# Stage 2: Build and Prepare
+build_training_image:
+  stage: build
+  before_script:
+    - pip install boto3 sagemaker
+  script:
+    - echo "Building training container..."
+    - python scripts/build_training_image.py
+    - echo "Training image built successfully"
+  artifacts:
+    paths:
+      - training_image_uri.txt
+    expire_in: 1 hour
+  only:
+    - branches
+    - merge_requests
+
+# Stage 3: Training Jobs
+train_candidate:
+  stage: train
+  before_script:
+    - pip install boto3 sagemaker
+    - export TRAINING_JOB_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+  script:
+    - echo "Starting candidate training job: $TRAINING_JOB_NAME"
+    - python scripts/train_sagemaker.py
+        --job-name $TRAINING_JOB_NAME
+        --role-arn $SAGEMAKER_ROLE_ARN
+        --s3-bucket $S3_BUCKET
+        --instance-type ml.m5.large
+        --max-runtime 3600
+    - echo "Candidate training job completed"
+  artifacts:
+    reports:
+      junit: test-results.xml
+    paths:
+      - training_output/
+    expire_in: 1 week
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+train_stable:
+  stage: train
+  before_script:
+    - pip install boto3 sagemaker
+    - export TRAINING_JOB_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+  script:
+    - echo "Starting stable training job: $TRAINING_JOB_NAME"
+    - python scripts/train_sagemaker.py
+        --job-name $TRAINING_JOB_NAME
+        --role-arn $SAGEMAKER_ROLE_ARN
+        --s3-bucket $S3_BUCKET
+        --instance-type ml.m5.xlarge
+        --max-runtime 7200
+    - echo "Stable training job completed"
+  artifacts:
+    reports:
+      junit: test-results.xml
+    paths:
+      - training_output/
+    expire_in: 1 month
+  only:
+    - main
+
+# Stage 4: Model Registration
+register_candidate_model:
+  stage: register
+  before_script:
+    - pip install boto3 sagemaker
+    - export MODEL_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+  script:
+    - echo "Registering candidate model: $MODEL_NAME"
+    - python scripts/register_model.py
+        --model-name $MODEL_NAME
+        --training-job-name "${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+        --package-group-name $MODEL_PACKAGE_GROUP_NAME
+        --model-version "candidate-${CI_COMMIT_SHORT_SHA}"
+    - echo "Candidate model registered successfully"
+  dependencies:
+    - train_candidate
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+register_stable_model:
+  stage: register
+  before_script:
+    - pip install boto3 sagemaker
+    - export MODEL_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+  script:
+    - echo "Registering stable model: $MODEL_NAME"
+    - python scripts/register_model.py
+        --model-name $MODEL_NAME
+        --training-job-name "${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+        --package-group-name $MODEL_PACKAGE_GROUP_NAME
+        --model-version "stable-${CI_PIPELINE_ID}"
+    - echo "Stable model registered successfully"
+  dependencies:
+    - train_stable
+  only:
+    - main
+
+# Stage 5: Endpoint Deployment
+deploy_candidate_endpoint:
+  stage: deploy
+  before_script:
+    - pip install boto3 sagemaker
+    - export ENDPOINT_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+    - export MODEL_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+  script:
+    - echo "Deploying candidate endpoint: $ENDPOINT_NAME"
+    - python scripts/deploy_endpoint.py
+        --endpoint-name $ENDPOINT_NAME
+        --model-name $MODEL_NAME
+        --instance-type ml.t2.medium
+        --initial-instance-count 1
+        --max-instance-count 2
+    - echo "Candidate endpoint deployed successfully"
+  dependencies:
+    - register_candidate_model
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+deploy_stable_endpoint:
+  stage: deploy
+  before_script:
+    - pip install boto3 sagemaker
+    - export ENDPOINT_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+    - export MODEL_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+  script:
+    - echo "Deploying stable endpoint: $ENDPOINT_NAME"
+    - python scripts/deploy_endpoint.py
+        --endpoint-name $ENDPOINT_NAME
+        --model-name $MODEL_NAME
+        --instance-type ml.m5.xlarge
+        --initial-instance-count 2
+        --max-instance-count 10
+        --enable-auto-scaling
+    - echo "Stable endpoint deployed successfully"
+  dependencies:
+    - register_stable_model
+  only:
+    - main
+
+# Stage 6: Testing
+test_candidate_endpoint:
+  stage: test
+  before_script:
+    - pip install boto3 requests pytest
+    - export ENDPOINT_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+  script:
+    - echo "Testing candidate endpoint: $ENDPOINT_NAME"
+    - python scripts/test_endpoint.py
+        --endpoint-name $ENDPOINT_NAME
+        --test-data s3://$S3_BUCKET/test-data/
+        --max-latency 1000
+        --min-accuracy 0.85
+    - echo "Candidate endpoint tests passed"
+  dependencies:
+    - deploy_candidate_endpoint
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+test_stable_endpoint:
+  stage: test
+  before_script:
+    - pip install boto3 requests pytest
+    - export ENDPOINT_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+  script:
+    - echo "Testing stable endpoint: $ENDPOINT_NAME"
+    - python scripts/test_endpoint.py
+        --endpoint-name $ENDPOINT_NAME
+        --test-data s3://$S3_BUCKET/test-data/
+        --max-latency 500
+        --min-accuracy 0.90
+    - echo "Stable endpoint tests passed"
+  dependencies:
+    - deploy_stable_endpoint
+  only:
+    - main
+
+# Stage 7: Package Creation
+package_candidate_zip:
+  stage: package
+  before_script:
+    - pip install boto3
+    - export ZIP_NAME="candidate-PR-${CI_MERGE_REQUEST_IID:-${CI_COMMIT_REF_SLUG}}-${CI_COMMIT_SHORT_SHA}-$(date +%Y%m%d-%H%M%S).zip"
+  script:
+    - echo "Creating candidate zip package: $ZIP_NAME"
+    - python scripts/create_zip_package.py
+        --zip-name $ZIP_NAME
+        --release-type candidate
+        --pr-id ${CI_MERGE_REQUEST_IID:-"local"}
+        --commit-id $CI_COMMIT_SHORT_SHA
+        --endpoint-name "${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+        --model-name "${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+        --training-output training_output/
+    - echo "Candidate zip package created: $ZIP_NAME"
+  artifacts:
+    paths:
+      - "*.zip"
+    expire_in: 1 week
+  dependencies:
+    - test_candidate_endpoint
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+package_stable_zip:
+  stage: package
+  before_script:
+    - pip install boto3
+    - export ZIP_NAME="stable-$(date +%Y%m%d-%H%M%S).zip"
+  script:
+    - echo "Creating stable zip package: $ZIP_NAME"
+    - python scripts/create_zip_package.py
+        --zip-name $ZIP_NAME
+        --release-type stable
+        --endpoint-name "${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+        --model-name "${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+        --training-output training_output/
+    - echo "Stable zip package created: $ZIP_NAME"
+  artifacts:
+    paths:
+      - "*.zip"
+    expire_in: 1 month
+  dependencies:
+    - test_stable_endpoint
+  only:
+    - main
+
+# Stage 8: Release Management
+create_candidate_release:
+  stage: release
+  before_script:
+    - pip install boto3
+  script:
+    - echo "Creating candidate release..."
+    - python scripts/create_release.py
+        --release-type candidate
+        --version "candidate-${CI_COMMIT_SHORT_SHA}"
+        --endpoint-name "${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+        --model-name "${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
+    - echo "Candidate release created successfully"
+  dependencies:
+    - package_candidate_zip
+  only:
+    - branches
+    - merge_requests
+  except:
+    - main
+
+create_stable_release:
+  stage: release
+  before_script:
+    - pip install boto3
+  script:
+    - echo "Creating stable release..."
+    - python scripts/create_release.py
+        --release-type stable
+        --version "stable-${CI_PIPELINE_ID}"
+        --endpoint-name "${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+        --model-name "${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
+    - echo "Stable release created successfully"
+  dependencies:
+    - package_stable_zip
+  only:
+    - main
+
+# Cleanup old resources
+cleanup_old_resources:
+  stage: release
+  before_script:
+    - pip install boto3
+  script:
+    - echo "Cleaning up old resources..."
+    - python scripts/cleanup_resources.py
+        --retention-days 7
+        --project-name $CI_PROJECT_NAME
+    - echo "Cleanup completed"
+  when: always
+  only:
+    - main
+
+# Notification job
+notify_completion:
+  stage: release
+  before_script:
+    - pip install requests
+  script:
+    - echo "Sending notification..."
+    - python scripts/send_notification.py
+        --pipeline-status $CI_PIPELINE_STATUS
+        --project-name $CI_PROJECT_NAME
+        --pipeline-url $CI_PIPELINE_URL
+    - echo "Notification sent"
+  when: always
+  dependencies:
+    - create_candidate_release
+    - create_stable_release
