@@ -307,13 +307,17 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 │   ├── test_endpoint.py            # Endpoint testing
 │   ├── create_release.py           # Release management
 │   └── cleanup_resources.py        # Resource cleanup
-├── src/                            # Source code
-│   ├── training/
-│   │   └── train.py                # Training script
-│   ├── inference/
-│   │   ├── inference.py            # Inference script
-│   │   └── requirements.txt        # Dependencies
-│   └── utils/                      # Utility functions
+├── templates/                      # Project templates
+│   ├── sagemaker-training-job/     # Training job template
+│   │   ├── training_script.py      # Training script
+│   │   ├── requirements.txt        # Dependencies
+│   │   ├── Dockerfile              # Container config
+│   │   └── manifest.json           # Project metadata
+│   └── sagemaker-endpoint-hosting/ # Endpoint hosting template
+│       ├── inference_handler.py    # Inference script
+│       ├── requirements.txt        # Dependencies
+│       ├── Dockerfile              # Container config
+│       └── manifest.json           # Project metadata
 └── tests/                          # Test files
     └── unit/
         └── test_training.py        # Unit tests

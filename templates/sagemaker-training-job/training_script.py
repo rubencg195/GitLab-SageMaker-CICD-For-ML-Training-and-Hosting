@@ -1,175 +1,237 @@
 #!/usr/bin/env python3
 """
-SageMaker Training Job Template
-This is a template for creating SageMaker training jobs.
-Replace the placeholder code with your actual training logic.
+Sample Training Script for SageMaker
+This script demonstrates a basic machine learning training pipeline.
 """
 
 import argparse
 import json
+import logging
 import os
-import sys
-from pathlib import Path
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
-import boto3
-import sagemaker
-from sagemaker.pytorch import PyTorch
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class CustomDataset(Dataset):
-    """Custom dataset class for your training data"""
+def load_data(data_path: str) -> tuple:
+    """
+    Load training and validation data.
     
-    def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
-    
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        return torch.tensor(self.data[idx], dtype=torch.float32), torch.tensor(self.labels[idx], dtype=torch.long)
-
-
-class SimpleModel(nn.Module):
-    """Simple neural network model - replace with your actual model"""
-    
-    def __init__(self, input_size, hidden_size, num_classes):
-        super(SimpleModel, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, num_classes)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.2)
-    
-    def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
-        return x
-
-
-def load_data(data_dir):
-    """Load and preprocess training data"""
-    # TODO: Replace with your actual data loading logic
-    print(f"Loading data from {data_dir}")
-    
-    # Example: Load CSV data
-    # data_path = os.path.join(data_dir, 'train.csv')
-    # df = pd.read_csv(data_path)
-    
-    # For demonstration, create synthetic data
-    np.random.seed(42)
-    X = np.random.randn(1000, 10)  # 1000 samples, 10 features
-    y = np.random.randint(0, 3, 1000)  # 3 classes
-    
-    return X, y
-
-
-def train_model(model, train_loader, val_loader, epochs, learning_rate, device):
-    """Train the model"""
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    
-    model.train()
-    for epoch in range(epochs):
-        total_loss = 0
-        for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
-            
-            optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-            
-            if batch_idx % 10 == 0:
-                print(f'Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}')
+    Args:
+        data_path: Path to the data directory
         
-        # Validation
-        model.eval()
-        val_loss = 0
-        correct = 0
-        with torch.no_grad():
-            for data, target in val_loader:
-                data, target = data.to(device), target.to(device)
-                output = model(data)
-                val_loss += criterion(output, target).item()
-                pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
+    Returns:
+        Tuple of (X_train, X_val, y_train, y_val)
+    """
+    try:
+        # Load training data
+        train_data_path = os.path.join(data_path, 'train.csv')
+        train_df = pd.read_csv(train_data_path)
         
-        val_accuracy = 100. * correct / len(val_loader.dataset)
-        print(f'Epoch {epoch}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%')
-        model.train()
+        # Load validation data
+        val_data_path = os.path.join(data_path, 'validation.csv')
+        val_df = pd.read_csv(val_data_path)
+        
+        # Separate features and target
+        X_train = train_df.drop('target', axis=1)
+        y_train = train_df['target']
+        
+        X_val = val_df.drop('target', axis=1)
+        y_val = val_df['target']
+        
+        logger.info(f"Training data shape: {X_train.shape}")
+        logger.info(f"Validation data shape: {X_val.shape}")
+        
+        return X_train, X_val, y_train, y_val
+        
+    except Exception as e:
+        logger.error(f"Failed to load data: {str(e)}")
+        raise
 
+def train_model(X_train, y_train, hyperparameters: dict) -> object:
+    """
+    Train a machine learning model.
+    
+    Args:
+        X_train: Training features
+        y_train: Training target
+        hyperparameters: Model hyperparameters
+        
+    Returns:
+        Trained model
+    """
+    try:
+        # Extract hyperparameters
+        n_estimators = int(hyperparameters.get('n_estimators', 100))
+        max_depth = int(hyperparameters.get('max_depth', 10))
+        random_state = int(hyperparameters.get('random_state', 42))
+        
+        # Create and train model
+        model = RandomForestClassifier(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state
+        )
+        
+        logger.info("Training model...")
+        model.fit(X_train, y_train)
+        
+        logger.info("Model training completed")
+        return model
+        
+    except Exception as e:
+        logger.error(f"Failed to train model: {str(e)}")
+        raise
 
-def save_model(model, model_dir):
-    """Save the trained model"""
-    model_path = os.path.join(model_dir, 'model.pth')
-    torch.save(model.state_dict(), model_path)
-    print(f"Model saved to {model_path}")
+def evaluate_model(model, X_val, y_val) -> dict:
+    """
+    Evaluate the trained model.
+    
+    Args:
+        model: Trained model
+        X_val: Validation features
+        y_val: Validation target
+        
+    Returns:
+        Dictionary containing evaluation metrics
+    """
+    try:
+        # Make predictions
+        y_pred = model.predict(X_val)
+        
+        # Calculate metrics
+        accuracy = accuracy_score(y_val, y_pred)
+        
+        # Generate classification report
+        report = classification_report(y_val, y_pred, output_dict=True)
+        
+        metrics = {
+            'accuracy': accuracy,
+            'precision': report['weighted avg']['precision'],
+            'recall': report['weighted avg']['recall'],
+            'f1_score': report['weighted avg']['f1-score']
+        }
+        
+        logger.info(f"Model accuracy: {accuracy:.4f}")
+        logger.info(f"Model precision: {metrics['precision']:.4f}")
+        logger.info(f"Model recall: {metrics['recall']:.4f}")
+        logger.info(f"Model F1-score: {metrics['f1_score']:.4f}")
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Failed to evaluate model: {str(e)}")
+        raise
 
+def save_model(model, model_dir: str) -> str:
+    """
+    Save the trained model.
+    
+    Args:
+        model: Trained model
+        model_dir: Directory to save the model
+        
+    Returns:
+        Path to the saved model
+    """
+    try:
+        # Create model directory if it doesn't exist
+        os.makedirs(model_dir, exist_ok=True)
+        
+        # Save model
+        model_path = os.path.join(model_dir, 'model.joblib')
+        joblib.dump(model, model_path)
+        
+        logger.info(f"Model saved to: {model_path}")
+        return model_path
+        
+    except Exception as e:
+        logger.error(f"Failed to save model: {str(e)}")
+        raise
+
+def save_metrics(metrics: dict, model_dir: str) -> str:
+    """
+    Save model metrics.
+    
+    Args:
+        metrics: Model metrics dictionary
+        model_dir: Directory to save the metrics
+        
+    Returns:
+        Path to the saved metrics file
+    """
+    try:
+        # Create model directory if it doesn't exist
+        os.makedirs(model_dir, exist_ok=True)
+        
+        # Save metrics
+        metrics_path = os.path.join(model_dir, 'metrics.json')
+        with open(metrics_path, 'w') as f:
+            json.dump(metrics, f, indent=2)
+        
+        logger.info(f"Metrics saved to: {metrics_path}")
+        return metrics_path
+        
+    except Exception as e:
+        logger.error(f"Failed to save metrics: {str(e)}")
+        raise
 
 def main():
-    parser = argparse.ArgumentParser(description='SageMaker Training Job')
-    parser.add_argument('--data-dir', type=str, default='/opt/ml/input/data/training',
-                       help='Directory containing training data')
-    parser.add_argument('--model-dir', type=str, default='/opt/ml/model',
-                       help='Directory to save the trained model')
-    parser.add_argument('--epochs', type=int, default=10,
-                       help='Number of training epochs')
-    parser.add_argument('--batch-size', type=int, default=32,
-                       help='Batch size for training')
-    parser.add_argument('--learning-rate', type=float, default=0.001,
-                       help='Learning rate for optimizer')
-    parser.add_argument('--hidden-size', type=int, default=64,
-                       help='Hidden layer size')
+    """Main training function."""
+    parser = argparse.ArgumentParser(description='Train a machine learning model')
+    
+    parser.add_argument('--data-path', default='/opt/ml/input/data', help='Path to training data')
+    parser.add_argument('--model-dir', default='/opt/ml/model', help='Directory to save the model')
+    parser.add_argument('--n-estimators', type=int, default=100, help='Number of estimators')
+    parser.add_argument('--max-depth', type=int, default=10, help='Maximum depth')
+    parser.add_argument('--random-state', type=int, default=42, help='Random state')
     
     args = parser.parse_args()
     
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    
-    # Load data
-    X, y = load_data(args.data_dir)
-    
-    # Split data
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    # Create datasets
-    train_dataset = CustomDataset(X_train, y_train)
-    val_dataset = CustomDataset(X_val, y_val)
-    
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-    
-    # Create model
-    input_size = X.shape[1]
-    num_classes = len(np.unique(y))
-    model = SimpleModel(input_size, args.hidden_size, num_classes).to(device)
-    
-    print(f"Model created with {sum(p.numel() for p in model.parameters())} parameters")
-    
-    # Train model
-    train_model(model, train_loader, val_loader, args.epochs, args.learning_rate, device)
-    
-    # Save model
-    save_model(model, args.model_dir)
-    
-    print("Training completed successfully!")
+    try:
+        logger.info("Starting training process...")
+        
+        # Load data
+        X_train, X_val, y_train, y_val = load_data(args.data_path)
+        
+        # Prepare hyperparameters
+        hyperparameters = {
+            'n_estimators': args.n_estimators,
+            'max_depth': args.max_depth,
+            'random_state': args.random_state
+        }
+        
+        # Train model
+        model = train_model(X_train, y_train, hyperparameters)
+        
+        # Evaluate model
+        metrics = evaluate_model(model, X_val, y_val)
+        
+        # Save model
+        model_path = save_model(model, args.model_dir)
+        
+        # Save metrics
+        metrics_path = save_metrics(metrics, args.model_dir)
+        
+        # Save hyperparameters
+        hyperparams_path = os.path.join(args.model_dir, 'hyperparameters.json')
+        with open(hyperparams_path, 'w') as f:
+            json.dump(hyperparameters, f, indent=2)
+        
+        logger.info("Training process completed successfully!")
+        logger.info(f"Model saved to: {model_path}")
+        logger.info(f"Metrics saved to: {metrics_path}")
+        logger.info(f"Hyperparameters saved to: {hyperparams_path}")
+        
+    except Exception as e:
+        logger.error(f"Training process failed: {str(e)}")
+        raise
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
