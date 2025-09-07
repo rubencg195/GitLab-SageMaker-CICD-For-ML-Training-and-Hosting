@@ -119,36 +119,36 @@ resource "aws_route_table_association" "private_rta" {
   route_table_id = aws_route_table.private_rt.id
 }
 
-# Security Group for Workspace (Bastion Host)
+# Security Group for WorkSpaces Directory
 resource "aws_security_group" "workspace_sg" {
   name_prefix = "${local.project_name}-workspace-"
   vpc_id      = aws_vpc.gitlab_vpc.id
 
-  # SSH access from internet
+  # WorkSpaces PCoIP access
   ingress {
-    from_port   = local.workspace_ssh_port
-    to_port     = local.workspace_ssh_port
-    protocol    = local.tcp_protocol
+    from_port   = 4172
+    to_port     = 4172
+    protocol    = "udp"
     cidr_blocks = [local.internet_cidr]
-    description = "SSH access to workspace"
+    description = "WorkSpaces PCoIP access"
   }
 
-  # RDP access from internet
+  # WorkSpaces PCoIP access (TCP)
   ingress {
-    from_port   = local.workspace_rdp_port
-    to_port     = local.workspace_rdp_port
+    from_port   = 4172
+    to_port     = 4172
     protocol    = local.tcp_protocol
     cidr_blocks = [local.internet_cidr]
-    description = "RDP access to workspace"
+    description = "WorkSpaces PCoIP access (TCP)"
   }
 
-  # VNC access from internet
+  # WorkSpaces WSP access
   ingress {
-    from_port   = local.workspace_vnc_port
-    to_port     = local.workspace_vnc_port
+    from_port   = 443
+    to_port     = 443
     protocol    = local.tcp_protocol
     cidr_blocks = [local.internet_cidr]
-    description = "VNC access to workspace"
+    description = "WorkSpaces WSP access"
   }
 
   # All outbound traffic
@@ -170,40 +170,40 @@ resource "aws_security_group" "gitlab_sg" {
   name_prefix = "${local.project_name}-gitlab-"
   vpc_id      = aws_vpc.gitlab_vpc.id
 
-  # SSH access from workspace only
+  # SSH access from WorkSpaces directory only
   ingress {
     from_port       = local.gitlab_ssh_port
     to_port         = local.gitlab_ssh_port
     protocol        = local.tcp_protocol
-    security_groups = [aws_security_group.workspace_sg.id]
-    description     = "SSH access from workspace"
+    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
+    description     = "SSH access from WorkSpaces directory"
   }
 
-  # HTTP access from workspace only
+  # HTTP access from WorkSpaces directory only
   ingress {
     from_port       = local.gitlab_http_port
     to_port         = local.gitlab_http_port
     protocol        = local.tcp_protocol
-    security_groups = [aws_security_group.workspace_sg.id]
-    description     = "HTTP access from workspace"
+    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
+    description     = "HTTP access from WorkSpaces directory"
   }
 
-  # HTTPS access from workspace only
+  # HTTPS access from WorkSpaces directory only
   ingress {
     from_port       = local.gitlab_https_port
     to_port         = local.gitlab_https_port
     protocol        = local.tcp_protocol
-    security_groups = [aws_security_group.workspace_sg.id]
-    description     = "HTTPS access from workspace"
+    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
+    description     = "HTTPS access from WorkSpaces directory"
   }
 
-  # GitLab SSH access (alternative port) from workspace only
+  # GitLab SSH access (alternative port) from WorkSpaces directory only
   ingress {
     from_port       = local.gitlab_ssh_port_alt
     to_port         = local.gitlab_ssh_port_alt
     protocol        = local.tcp_protocol
-    security_groups = [aws_security_group.workspace_sg.id]
-    description     = "GitLab SSH access from workspace"
+    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
+    description     = "GitLab SSH access from WorkSpaces directory"
   }
 
   # All outbound traffic
@@ -240,64 +240,49 @@ resource "aws_ebs_volume" "gitlab_data" {
   })
 }
 
-# Workspace EC2 Instance (Bastion Host)
-resource "aws_instance" "workspace" {
-  ami                    = local.ubuntu_ami_id
-  instance_type          = "t3.medium"
-  key_name               = aws_key_pair.gitlab_key.key_name
-  vpc_security_group_ids = [aws_security_group.workspace_sg.id]
-  subnet_id              = aws_subnet.public_subnets[0].id
-  associate_public_ip_address = true
+# AWS WorkSpaces Directory
+resource "aws_workspaces_directory" "workspace_directory" {
+  directory_id = aws_directory_service_directory.workspace_ad.id
+  subnet_ids   = aws_subnet.private_subnets[*].id
 
-  root_block_device {
-    volume_type = local.root_volume_type
-    volume_size = local.root_volume_size
-    encrypted   = true
+  tags = merge(local.common_tags, {
+    Name = "${local.project_name}-workspace-directory"
+  })
+}
+
+# AWS Directory Service (Simple AD)
+resource "aws_directory_service_directory" "workspace_ad" {
+  name     = "workspace.${local.domain_name}"
+  password = local.workspace_password
+  size     = "Small"
+
+  vpc_settings {
+    vpc_id     = aws_vpc.gitlab_vpc.id
+    subnet_ids = aws_subnet.private_subnets[*].id
   }
 
-  user_data = base64encode(<<-EOF
-    #!/bin/bash
-    apt-get update
-    apt-get install -y ubuntu-desktop-minimal xrdp
-    systemctl enable xrdp
-    systemctl start xrdp
-    
-    # Create workspace user
-    useradd -m -s /bin/bash ${local.workspace_username}
-    echo "${local.workspace_username}:${local.workspace_password}" | chpasswd
-    usermod -aG sudo ${local.workspace_username}
-    usermod -aG adm ${local.workspace_username}
-    
-    # Configure auto-login
-    mkdir -p /etc/lightdm/lightdm.conf.d
-    cat > /etc/lightdm/lightdm.conf.d/50-ubuntu.conf << 'EOL'
-[SeatDefaults]
-autologin-user=${local.workspace_username}
-autologin-user-timeout=0
-EOL
-    
-    # Install VS Code Server
-    curl -fsSL https://code-server.dev/install.sh | sh
-    systemctl enable --now code-server@${local.workspace_username}
-    
-    # Configure code-server
-    mkdir -p /home/${local.workspace_username}/.config/code-server
-    cat > /home/${local.workspace_username}/.config/code-server/config.yaml << 'EOL'
-bind-addr: 0.0.0.0:8080
-auth: password
-password: ${local.workspace_password}
-cert: false
-EOL
-    
-    chown -R ${local.workspace_username}:${local.workspace_username} /home/${local.workspace_username}/.config
-    
-    # Install additional tools
-    apt-get install -y git curl wget vim nano htop tree
-    
-    # Reboot to apply changes
-    reboot
-  EOF
-  )
+  tags = merge(local.common_tags, {
+    Name = "${local.project_name}-workspace-ad"
+  })
+}
+
+# AWS WorkSpace
+resource "aws_workspaces_workspace" "workspace" {
+  directory_id = aws_workspaces_directory.workspace_directory.id
+  bundle_id    = data.aws_workspaces_bundle.workspace_bundle.id
+  user_name    = local.workspace_username
+
+  root_volume_encryption_enabled = true
+  user_volume_encryption_enabled  = true
+  volume_encryption_key           = aws_kms_key.workspace_key.arn
+
+  workspace_properties {
+    compute_type_name                         = "STANDARD"
+    user_volume_size_gib                      = 50
+    root_volume_size_gib                      = 80
+    running_mode                              = "AUTO_STOP"
+    running_mode_auto_stop_timeout_in_minutes = 60
+  }
 
   tags = merge(local.common_tags, {
     Name = "${local.project_name}-workspace"
@@ -305,7 +290,28 @@ EOL
     Application = "workspace"
   })
 
-  depends_on = [aws_internet_gateway.gitlab_igw]
+  depends_on = [aws_workspaces_directory.workspace_directory]
+}
+
+# KMS Key for WorkSpace encryption
+resource "aws_kms_key" "workspace_key" {
+  description             = "KMS key for WorkSpace encryption"
+  deletion_window_in_days = 7
+
+  tags = merge(local.common_tags, {
+    Name = "${local.project_name}-workspace-key"
+  })
+}
+
+# KMS Key Alias
+resource "aws_kms_alias" "workspace_key_alias" {
+  name          = "alias/${local.project_name}-workspace-key"
+  target_key_id = aws_kms_key.workspace_key.key_id
+}
+
+# Data source for WorkSpace bundle
+data "aws_workspaces_bundle" "workspace_bundle" {
+  bundle_id = "wsb-1jjj1k0kj" # Amazon Linux 2 (Standard) bundle
 }
 
 # GitLab EC2 Instance (Private)

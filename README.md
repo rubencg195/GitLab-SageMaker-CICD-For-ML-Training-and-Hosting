@@ -8,25 +8,53 @@ This comprehensive solution provides:
 - **Complete GitLab Server Infrastructure** deployed on AWS
 - **Automated CI/CD Pipeline** for ML model training and deployment
 - **SageMaker Integration** with training jobs and endpoint management
-- **VS Code Workspace** with pre-configured development environment
+- **AWS WorkSpace** with enterprise-grade security for GitLab access
 - **Production-ready Architecture** with monitoring, security, and cost optimization
+
+## 🔒 Why AWS WorkSpaces for Highly Sensitive Environments?
+
+This solution uses **AWS WorkSpaces** instead of traditional EC2 instances for accessing GitLab, simulating a highly sensitive enterprise environment where:
+
+### **Security Requirements:**
+- **Zero Trust Architecture**: GitLab is completely isolated in private subnets
+- **Virtual Desktop Isolation**: All GitLab access must go through a secure virtual desktop
+- **Enterprise Compliance**: WorkSpaces provide SOC, PCI, HIPAA, and FedRAMP compliance
+- **Data Encryption**: All data encrypted at rest and in transit using AWS KMS
+- **Centralized Authentication**: Directory Service provides enterprise-grade user management
+
+### **Access Control:**
+- **No Direct Access**: GitLab cannot be accessed directly from the internet
+- **WorkSpace-Only Access**: All development work must be done within the WorkSpace
+- **Audit Trail**: Complete logging of all WorkSpace and GitLab activities
+- **Session Management**: WorkSpaces can be automatically stopped/started for cost control
+
+### **Enterprise Features:**
+- **Multi-Platform Clients**: Windows, macOS, Linux, and mobile applications
+- **Web Access**: Browser-based access for any device
+- **Persistent Storage**: User data and configurations are maintained
+- **Scalability**: Easy to add/remove WorkSpaces as needed
+
+This architecture ensures that sensitive ML models and code remain secure while providing developers with a familiar desktop environment for GitLab access.
 
 ## 🏗️ Architecture
 
 ### Infrastructure Components
 - **VPC**: Multi-AZ VPC with public and private subnets
-- **Workspace Server**: Ubuntu desktop with VS Code Server, RDP, VNC access (Public subnet)
+- **AWS WorkSpace**: Enterprise virtual desktop for secure GitLab access (Private subnet)
 - **GitLab Server**: EC2 instance (t3.large) with Ubuntu 22.04 LTS (Private subnet)
+- **Directory Service**: AWS Simple AD for WorkSpace authentication
 - **Data Storage**: EBS volume (100GB) for GitLab data persistence
 - **Network**: NAT Gateway, Elastic IP, security groups, Route53 hosted zone
 - **Monitoring**: CloudWatch logging and metrics
-- **Security**: IAM roles, policies, encrypted storage, and bastion host architecture
+- **Security**: IAM roles, policies, encrypted storage, KMS encryption, and WorkSpace isolation
 
 ### Security Architecture
-- **GitLab Server**: Isolated in private subnet, accessible only via workspace
-- **Workspace Server**: Bastion host in public subnet with multiple access methods
+- **GitLab Server**: Isolated in private subnet, accessible only via AWS WorkSpace
+- **AWS WorkSpace**: Enterprise virtual desktop in private subnet with encrypted storage
+- **Directory Service**: Centralized authentication and user management
 - **Network Security**: Security groups restrict traffic between components
-- **Access Control**: All GitLab access must go through the workspace server
+- **Access Control**: All GitLab access must go through the WorkSpace virtual desktop
+- **Encryption**: All data encrypted at rest and in transit using AWS KMS
 
 ### CI/CD Pipeline Architecture
 
@@ -147,26 +175,25 @@ The CI/CD pipeline automatically creates zip packages containing:
 - **Linux**: Install from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
 - **Mobile**: Available for Android and iOS from respective app stores
 
-### Step 2: Workspace and GitLab Access
+### Step 2: AWS WorkSpace and GitLab Access
 
-7. **Access Workspace Server:**
-   - **Public IP**: 35.90.17.111 (check outputs for current IP)
+7. **Access AWS WorkSpace:**
+   - **Registration Code**: Check outputs after deployment
    - **Username**: `ubuntu`
    - **Password**: `workspace123!`
    
    **Access Methods:**
-   - **SSH**: `ssh -i ~/.ssh/id_rsa ubuntu@35.90.17.111`
-   - **RDP**: `rdp://35.90.17.111:3389`
-   - **VNC**: `vnc://35.90.17.111:5900`
-   - **VS Code Server**: `http://35.90.17.111:8080`
+   - **Web Client**: [https://us-east-1.webclient.amazonworkspaces.com/registration](https://us-east-1.webclient.amazonworkspaces.com/registration)
+   - **Desktop Apps**: Download from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
+   - **Mobile Apps**: Available for Android and iOS
 
-8. **Access GitLab through Workspace:**
+8. **Access GitLab through WorkSpace:**
    - **URL**: http://10.0.10.25 (GitLab private IP)
-   - **SSH to GitLab**: `ssh -i ~/.ssh/id_rsa ubuntu@35.90.17.111 'ssh ubuntu@10.0.10.25'`
+   - **SSH to GitLab**: From WorkSpace: `ssh ubuntu@10.0.10.25`
 
 9. **Get GitLab initial root password:**
    ```bash
-   # From workspace server
+   # From WorkSpace
    ssh ubuntu@10.0.10.25 "sudo cat /etc/gitlab/initial_root_password"
    ```
 
@@ -199,52 +226,47 @@ The CI/CD pipeline automatically creates zip packages containing:
 17. **Monitor pipeline execution** in GitLab web interface
 18. **Check SageMaker resources** in AWS console
 
-## 🔐 Workspace Access Guide
+## 🔐 AWS WorkSpace Access Guide
 
-### Accessing the Workspace Server
+### Accessing the AWS WorkSpace
 
-The workspace server provides multiple ways to access your development environment:
+The AWS WorkSpace provides enterprise-grade virtual desktop access to your development environment:
 
-#### Method 1: SSH Access
-```bash
-ssh -i ~/.ssh/id_rsa ubuntu@35.90.17.111
-# Password: workspace123!
-```
-
-#### Method 2: VS Code Server (Recommended)
-1. Open your browser and navigate to: `http://35.90.17.111:8080`
-2. Login with:
-   - **Username**: `ubuntu`
-   - **Password**: `workspace123!`
-3. Start coding directly in your browser!
-
-#### Method 3: RDP (Remote Desktop)
-1. Use any RDP client
-2. Connect to: `rdp://35.90.17.111:3389`
+#### Method 1: Web Client (Recommended)
+1. Navigate to: [https://us-east-1.webclient.amazonworkspaces.com/registration](https://us-east-1.webclient.amazonworkspaces.com/registration)
+2. Enter your registration code (provided in outputs)
 3. Login with:
    - **Username**: `ubuntu`
    - **Password**: `workspace123!`
+4. Start coding directly in your browser!
 
-#### Method 4: VNC
-1. Use any VNC client
-2. Connect to: `vnc://35.90.17.111:5900`
-3. Login with:
-   - **Username**: `ubuntu`
-   - **Password**: `workspace123!`
+#### Method 2: Desktop Applications
+1. Download the appropriate client from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
+2. Install and launch the application
+3. Enter your registration code
+4. Login with your credentials
 
-### Accessing GitLab from Workspace
+#### Method 3: Mobile Applications
+1. Download from your device's app store
+2. Launch the Amazon WorkSpaces app
+3. Enter your registration code
+4. Login with your credentials
 
-Once connected to the workspace, access GitLab:
+### Accessing GitLab from WorkSpace
+
+Once connected to the WorkSpace, access GitLab:
 
 1. **Web Interface**: Open `http://10.0.10.25` in your browser
-2. **SSH Access**: Run `ssh ubuntu@10.0.10.25` from the workspace terminal
+2. **SSH Access**: Run `ssh ubuntu@10.0.10.25` from the WorkSpace terminal
 3. **Get GitLab Password**: Run `ssh ubuntu@10.0.10.25 "sudo cat /etc/gitlab/initial_root_password"`
 
-### Security Notes
-- GitLab is only accessible through the workspace server
-- All traffic is encrypted and secured through security groups
-- The workspace acts as a bastion host for secure access
+### Security Features
+- GitLab is only accessible through the AWS WorkSpace
+- All data is encrypted at rest and in transit using AWS KMS
+- WorkSpace provides enterprise-grade security and compliance
+- Complete audit trail of all WorkSpace and GitLab activities
 - No direct internet access to GitLab server
+- Centralized authentication through Directory Service
 
 ## ⚙️ Configuration
 

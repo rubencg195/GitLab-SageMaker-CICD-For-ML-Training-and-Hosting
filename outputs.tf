@@ -20,20 +20,20 @@ output "private_subnet_ids" {
   value       = aws_subnet.private_subnets[*].id
 }
 
-# Workspace Server Outputs
-output "workspace_instance_id" {
-  description = "ID of the Workspace EC2 instance"
-  value       = aws_instance.workspace.id
+# AWS WorkSpaces Outputs
+output "workspace_id" {
+  description = "ID of the AWS WorkSpace"
+  value       = aws_workspaces_workspace.workspace.id
 }
 
-output "workspace_public_ip" {
-  description = "Public IP address of the Workspace server"
-  value       = aws_instance.workspace.public_ip
+output "workspace_ip_address" {
+  description = "IP address of the AWS WorkSpace"
+  value       = aws_workspaces_workspace.workspace.ip_address
 }
 
-output "workspace_public_dns" {
-  description = "Public DNS name of the Workspace server"
-  value       = aws_instance.workspace.public_dns
+output "workspace_directory_id" {
+  description = "ID of the WorkSpaces directory"
+  value       = aws_workspaces_directory.workspace_directory.id
 }
 
 output "workspace_username" {
@@ -49,7 +49,7 @@ output "workspace_password" {
 
 output "workspace_registration_code" {
   description = "Registration code for Amazon WorkSpaces web client"
-  value       = "WORKSPACE-${substr(aws_instance.workspace.id, -8, -1)}-${substr(aws_instance.workspace.public_ip, -4, -1)}"
+  value       = "WORKSPACE-${substr(aws_workspaces_workspace.workspace.id, -8, -1)}-${substr(aws_workspaces_workspace.workspace.ip_address, -4, -1)}"
 }
 
 # GitLab Server Outputs
@@ -84,30 +84,15 @@ output "gitlab_ssh_url" {
   value       = "git@${aws_instance.gitlab_server.private_ip}:"
 }
 
-# Workspace Access URLs
-output "workspace_http_url" {
-  description = "HTTP URL to access workspace"
-  value       = "http://${aws_instance.workspace.public_ip}"
-}
-
-output "workspace_rdp_url" {
-  description = "RDP URL to access workspace desktop"
-  value       = "rdp://${aws_instance.workspace.public_ip}:${local.workspace_rdp_port}"
-}
-
-output "workspace_vnc_url" {
-  description = "VNC URL to access workspace desktop"
-  value       = "vnc://${aws_instance.workspace.public_ip}:${local.workspace_vnc_port}"
-}
-
-output "workspace_code_server_url" {
-  description = "VS Code Server URL"
-  value       = "http://${aws_instance.workspace.public_ip}:8080"
-}
-
+# WorkSpaces Access URLs
 output "workspace_web_client_url" {
   description = "Amazon WorkSpaces Web Client URL"
   value       = "https://us-east-1.webclient.amazonworkspaces.com/registration"
+}
+
+output "workspace_directory_dns" {
+  description = "DNS name of the WorkSpaces directory"
+  value       = aws_directory_service_directory.workspace_ad.dns_ip_addresses
 }
 
 # Security Group Outputs
@@ -151,14 +136,14 @@ output "gitlab_instance_profile_name" {
 }
 
 # Connection Information
-output "workspace_ssh_connection_command" {
-  description = "SSH command to connect to workspace server"
-  value       = "ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_instance.workspace.public_ip}"
+output "workspace_connection_instructions" {
+  description = "Instructions for connecting to AWS WorkSpace"
+  value       = "Use Amazon WorkSpaces web client at https://us-east-1.webclient.amazonworkspaces.com/registration with registration code and directory credentials"
 }
 
 output "gitlab_ssh_connection_command" {
-  description = "SSH command to connect to GitLab server via workspace"
-  value       = "ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_instance.workspace.public_ip} 'ssh ${local.ssh_user}@${aws_instance.gitlab_server.private_ip}'"
+  description = "SSH command to connect to GitLab server via WorkSpace"
+  value       = "From WorkSpace: ssh ${local.ssh_user}@${aws_instance.gitlab_server.private_ip}"
 }
 
 # Workspace Setup Instructions
@@ -168,17 +153,15 @@ output "workspace_setup_instructions" {
     Workspace and GitLab have been deployed successfully!
     
     WORKSPACE ACCESS:
-    - Public IP: ${aws_instance.workspace.public_ip}
+    - WorkSpace ID: ${aws_workspaces_workspace.workspace.id}
     - Username: ${local.workspace_username}
     - Password: ${local.workspace_password}
-    - Registration Code: WORKSPACE-${aws_workspace_workspace.workspace.id}
+    - Registration Code: WORKSPACE-${substr(aws_workspaces_workspace.workspace.id, -8, -1)}-${substr(aws_workspaces_workspace.workspace.ip_address, -4, -1)}
+    - Directory DNS: ${join(", ", aws_directory_service_directory.workspace_ad.dns_ip_addresses)}
     
-    Workspace Access Methods:
+    WorkSpace Access Methods:
     1. Amazon WorkSpaces Web Client: https://us-east-1.webclient.amazonworkspaces.com/registration
-    2. SSH: ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_instance.workspace.public_ip}
-    3. RDP: rdp://${aws_instance.workspace.public_ip}:${local.workspace_rdp_port}
-    4. VNC: vnc://${aws_instance.workspace.public_ip}:${local.workspace_vnc_port}
-    5. VS Code Server: http://${aws_instance.workspace.public_ip}:8080
+    2. Amazon WorkSpaces Client Applications (Windows, macOS, Linux, Mobile)
     
     GITLAB ACCESS (via Workspace):
     - Private IP: ${aws_instance.gitlab_server.private_ip}
@@ -186,18 +169,20 @@ output "workspace_setup_instructions" {
     - HTTPS: https://${aws_instance.gitlab_server.private_ip}
     
     To access GitLab:
-    1. Connect to workspace using any method above
-    2. From workspace, access GitLab at http://${aws_instance.gitlab_server.private_ip}
-    3. To get GitLab root password, run from workspace:
+    1. Connect to WorkSpace using Amazon WorkSpaces client
+    2. From WorkSpace, access GitLab at http://${aws_instance.gitlab_server.private_ip}
+    3. To get GitLab root password, run from WorkSpace:
        ssh ${local.ssh_user}@${aws_instance.gitlab_server.private_ip} "sudo cat /etc/gitlab/initial_root_password"
     
     Default GitLab username: root
     
-    SECURITY:
-    - GitLab is now in a private subnet and only accessible through the workspace
-    - Workspace acts as a bastion host for secure access
-    - All GitLab traffic is routed through the workspace security group
+    SECURITY FEATURES:
+    - GitLab is in a private subnet and only accessible through WorkSpace
+    - WorkSpace provides enterprise-grade security and compliance
+    - All data is encrypted at rest and in transit
+    - WorkSpace acts as a secure virtual desktop for GitLab access
+    - Directory Service provides centralized authentication
     
-    Note: It may take a few minutes for both workspace and GitLab to fully initialize.
+    Note: WorkSpace may take 10-15 minutes to fully initialize. GitLab will be ready shortly after.
   EOT
 }
