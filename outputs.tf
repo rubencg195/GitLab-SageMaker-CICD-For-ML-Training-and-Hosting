@@ -105,6 +105,11 @@ output "workspace_code_server_url" {
   value       = "http://${aws_instance.workspace.public_ip}:8080"
 }
 
+output "workspace_web_client_url" {
+  description = "Amazon WorkSpaces Web Client URL"
+  value       = "https://us-east-1.webclient.amazonworkspaces.com/registration"
+}
+
 # Security Group Outputs
 output "gitlab_security_group_id" {
   description = "ID of the GitLab security group"
@@ -166,13 +171,14 @@ output "workspace_setup_instructions" {
     - Public IP: ${aws_instance.workspace.public_ip}
     - Username: ${local.workspace_username}
     - Password: ${local.workspace_password}
-    - Registration Code: WORKSPACE-${substr(aws_instance.workspace.id, -8, -1)}-${substr(aws_instance.workspace.public_ip, -4, -1)}
+    - Registration Code: WORKSPACE-${aws_workspace_workspace.workspace.id}
     
     Workspace Access Methods:
-    1. SSH: ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_instance.workspace.public_ip}
-    2. RDP: rdp://${aws_instance.workspace.public_ip}:${local.workspace_rdp_port}
-    3. VNC: vnc://${aws_instance.workspace.public_ip}:${local.workspace_vnc_port}
-    4. VS Code Server: http://${aws_instance.workspace.public_ip}:8080
+    1. Amazon WorkSpaces Web Client: https://us-east-1.webclient.amazonworkspaces.com/registration
+    2. SSH: ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_instance.workspace.public_ip}
+    3. RDP: rdp://${aws_instance.workspace.public_ip}:${local.workspace_rdp_port}
+    4. VNC: vnc://${aws_instance.workspace.public_ip}:${local.workspace_vnc_port}
+    5. VS Code Server: http://${aws_instance.workspace.public_ip}:8080
     
     GITLAB ACCESS (via Workspace):
     - Private IP: ${aws_instance.gitlab_server.private_ip}

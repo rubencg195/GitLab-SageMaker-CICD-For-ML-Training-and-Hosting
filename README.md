@@ -299,8 +299,8 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 ├── main.tf                         # Main infrastructure resources
 ├── outputs.tf                      # OpenTofu outputs
 ├── provider.tf                     # AWS provider configuration
-├── gitlab-install.sh              # GitLab installation script
 ├── scripts/                        # Automation scripts
+│   ├── gitlab-install.sh          # GitLab installation script
 │   ├── train_sagemaker.py          # Training job management
 │   ├── register_model.py           # Model registration
 │   ├── deploy_endpoint.py          # Endpoint deployment

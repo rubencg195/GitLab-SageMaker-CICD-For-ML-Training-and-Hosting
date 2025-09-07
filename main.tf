@@ -324,7 +324,7 @@ resource "aws_instance" "gitlab_server" {
     encrypted   = true
   }
 
-  user_data = base64encode(templatefile("${path.module}/gitlab-install.sh", {
+  user_data = base64encode(templatefile("${path.module}/scripts/gitlab-install.sh", {
     gitlab_external_url = local.gitlab_external_url
   }))
 
