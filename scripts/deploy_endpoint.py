@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SageMaker Endpoint Deployment Script
-This script deploys models to SageMaker endpoints for real-time inference.
+SageMaker XGBoost Endpoint Deployment Script
+This script deploys XGBoost models to SageMaker endpoints using AWS pre-built containers.
 """
 
 import argparse
@@ -16,59 +16,90 @@ from typing import Dict, Any, List
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class EndpointDeployer:
+class XGBoostEndpointDeployer:
     def __init__(self, region: str = "us-east-1"):
         """Initialize SageMaker client and session."""
         self.sagemaker_client = boto3.client('sagemaker', region_name=region)
         self.region = region
+        
+        # AWS pre-built XGBoost container URIs by region
+        self.xgboost_containers = {
+            'us-east-1': '683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'us-west-2': '433757028032.dkr.ecr.us-west-2.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'us-east-2': '257758044811.dkr.ecr.us-east-2.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'us-west-1': '433757028032.dkr.ecr.us-west-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'eu-west-1': '685385470294.dkr.ecr.eu-west-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'eu-central-1': '438346466558.dkr.ecr.eu-central-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'ap-southeast-1': '544295431143.dkr.ecr.ap-southeast-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'ap-southeast-2': '666831318237.dkr.ecr.ap-southeast-2.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'ap-northeast-1': '351501993468.dkr.ecr.ap-northeast-1.amazonaws.com/sagemaker-xgboost:1.7-1',
+            'ca-central-1': '469771592824.dkr.ecr.ca-central-1.amazonaws.com/sagemaker-xgboost:1.7-1'
+        }
+    
+    def get_xgboost_container_uri(self) -> str:
+        """Get the XGBoost container URI for the current region."""
+        container_uri = self.xgboost_containers.get(self.region)
+        if not container_uri:
+            raise ValueError(f"XGBoost container not available for region: {self.region}")
+        return container_uri
 
     def create_model(self, 
                     model_name: str,
-                    model_package_arn: str,
+                    model_artifact_path: str,
                     execution_role_arn: str) -> str:
         """
-        Create a SageMaker model from a model package.
+        Create a SageMaker XGBoost model from training artifacts.
         
         Args:
             model_name: Name of the model
-            model_package_arn: ARN of the model package
+            model_artifact_path: S3 path to model artifacts
             execution_role_arn: IAM role ARN for execution
             
         Returns:
             Model ARN
         """
         try:
+            # Get XGBoost container URI
+            container_uri = self.get_xgboost_container_uri()
+            logger.info(f"Using XGBoost container: {container_uri}")
+            
             response = self.sagemaker_client.create_model(
                 ModelName=model_name,
                 ExecutionRoleArn=execution_role_arn,
                 Containers=[
                     {
-                        "ModelPackageName": model_package_arn
+                        "Image": container_uri,
+                        "ModelDataUrl": model_artifact_path,
+                        "Environment": {
+                            "SAGEMAKER_PROGRAM": "inference.py",
+                            "SAGEMAKER_SUBMIT_DIRECTORY": "/opt/ml/code",
+                            "SAGEMAKER_CONTAINER_LOG_LEVEL": "20",
+                            "SAGEMAKER_REGION": self.region
+                        }
                     }
                 ],
                 Tags=[
                     {
                         "Key": "Project",
-                        "Value": "ml-training-pipeline"
+                        "Value": "sagemaker-xgboost-ml"
                     },
                     {
                         "Key": "Environment",
-                        "Value": "ci-cd"
+                        "Value": "production"
                     },
                     {
-                        "Key": "ModelName",
-                        "Value": model_name
+                        "Key": "Algorithm",
+                        "Value": "XGBoost"
                     }
                 ]
             )
             
             model_arn = response['ModelArn']
-            logger.info(f"Model created: {model_arn}")
-            
+            logger.info(f"XGBoost model created successfully: {model_arn}")
             return model_arn
             
         except Exception as e:
-            logger.error(f"Failed to create model: {str(e)}")
+            logger.error(f"Failed to create XGBoost model: {str(e)}")
             raise
 
     def create_endpoint_config(self, 
@@ -305,7 +336,7 @@ def main():
     
     parser.add_argument('--endpoint-name', required=True, help='Name of the endpoint')
     parser.add_argument('--model-name', required=True, help='Name of the model')
-    parser.add_argument('--model-package-arn', help='ARN of the model package (if not using model name)')
+    parser.add_argument('--model-artifact-path', help='S3 path to model artifacts (if not using model name)')
     parser.add_argument('--execution-role-arn', required=True, help='IAM role ARN for execution')
     parser.add_argument('--instance-type', default='ml.t2.medium', help='EC2 instance type')
     parser.add_argument('--initial-instance-count', type=int, default=1, help='Initial number of instances')
@@ -317,8 +348,8 @@ def main():
     
     args = parser.parse_args()
     
-    # Create deployer instance
-    deployer = EndpointDeployer(region=args.region)
+    # Create XGBoost deployer instance
+    deployer = XGBoostEndpointDeployer(region=args.region)
     
     try:
         # Generate configuration name
@@ -348,11 +379,11 @@ def main():
             # Create new endpoint
             logger.info(f"Creating new endpoint: {args.endpoint_name}")
             
-            # Create model if model package ARN is provided
-            if args.model_package_arn:
+            # Create XGBoost model if model artifact path is provided
+            if args.model_artifact_path:
                 deployer.create_model(
                     model_name=args.model_name,
-                    model_package_arn=args.model_package_arn,
+                    model_artifact_path=args.model_artifact_path,
                     execution_role_arn=args.execution_role_arn
                 )
             

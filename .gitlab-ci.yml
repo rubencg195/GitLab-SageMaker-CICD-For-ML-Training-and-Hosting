@@ -3,7 +3,6 @@
 
 stages:
   - validate
-  - build
   - train
   - register
   - deploy
@@ -43,38 +42,37 @@ validate_code:
     - branches
     - merge_requests
 
-# Stage 2: Build and Prepare
-build_training_image:
-  stage: build
-  before_script:
-    - pip install boto3 sagemaker
+# Stage 2: Prepare XGBoost Container (No build needed - using pre-built AWS containers)
+prepare_xgboost_container:
+  stage: validate
   script:
-    - echo "Building training container..."
-    - python scripts/build_training_image.py
-    - echo "Training image built successfully"
-  artifacts:
-    paths:
-      - training_image_uri.txt
-    expire_in: 1 hour
+    - echo "Using AWS pre-built XGBoost container"
+    - echo "Container URI: 683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-xgboost:1.7-1"
+    - echo "XGBoost container is ready for training"
   only:
     - branches
     - merge_requests
 
-# Stage 3: Training Jobs
+# Stage 2: XGBoost Training Jobs
 train_candidate:
   stage: train
   before_script:
     - pip install boto3 sagemaker
     - export TRAINING_JOB_NAME="${CI_PROJECT_NAME}-candidate-${CI_COMMIT_SHORT_SHA}"
   script:
-    - echo "Starting candidate training job: $TRAINING_JOB_NAME"
+    - echo "Starting XGBoost candidate training job: $TRAINING_JOB_NAME"
     - python scripts/train_sagemaker.py
         --job-name $TRAINING_JOB_NAME
         --role-arn $SAGEMAKER_ROLE_ARN
         --s3-bucket $S3_BUCKET
         --instance-type ml.m5.large
         --max-runtime 3600
-    - echo "Candidate training job completed"
+        --num-round 100
+        --max-depth 6
+        --eta 0.3
+        --objective reg:squarederror
+        --wait
+    - echo "XGBoost candidate training job completed"
   artifacts:
     reports:
       junit: test-results.xml
@@ -93,14 +91,19 @@ train_stable:
     - pip install boto3 sagemaker
     - export TRAINING_JOB_NAME="${CI_PROJECT_NAME}-stable-${CI_PIPELINE_ID}"
   script:
-    - echo "Starting stable training job: $TRAINING_JOB_NAME"
+    - echo "Starting XGBoost stable training job: $TRAINING_JOB_NAME"
     - python scripts/train_sagemaker.py
         --job-name $TRAINING_JOB_NAME
         --role-arn $SAGEMAKER_ROLE_ARN
         --s3-bucket $S3_BUCKET
         --instance-type ml.m5.xlarge
         --max-runtime 7200
-    - echo "Stable training job completed"
+        --num-round 200
+        --max-depth 8
+        --eta 0.1
+        --objective reg:squarederror
+        --wait
+    - echo "XGBoost stable training job completed"
   artifacts:
     reports:
       junit: test-results.xml
@@ -110,7 +113,7 @@ train_stable:
   only:
     - main
 
-# Stage 4: Model Registration
+# Stage 3: Model Registration
 register_candidate_model:
   stage: register
   before_script:
@@ -150,7 +153,7 @@ register_stable_model:
   only:
     - main
 
-# Stage 5: Endpoint Deployment
+# Stage 4: Endpoint Deployment
 deploy_candidate_endpoint:
   stage: deploy
   before_script:
@@ -195,7 +198,7 @@ deploy_stable_endpoint:
   only:
     - main
 
-# Stage 6: Testing
+# Stage 5: Testing
 test_candidate_endpoint:
   stage: test
   before_script:
@@ -235,7 +238,7 @@ test_stable_endpoint:
   only:
     - main
 
-# Stage 7: Package Creation
+# Stage 6: Package Creation
 package_candidate_zip:
   stage: package
   before_script:
@@ -287,7 +290,7 @@ package_stable_zip:
   only:
     - main
 
-# Stage 8: Release Management
+# Stage 7: Release Management
 create_candidate_release:
   stage: release
   before_script:
