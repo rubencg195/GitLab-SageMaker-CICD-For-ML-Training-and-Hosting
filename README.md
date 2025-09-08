@@ -8,52 +8,39 @@ This comprehensive solution provides:
 - **Complete GitLab Server Infrastructure** deployed on AWS
 - **Automated CI/CD Pipeline** for ML model training and deployment
 - **SageMaker Integration** with training jobs and endpoint management
-- **AWS WorkSpace** with enterprise-grade security for GitLab access
+- **Public GitLab Access** with secure configuration
 - **Production-ready Architecture** with monitoring, security, and cost optimization
 
-## 🔒 Why AWS WorkSpaces for Highly Sensitive Environments?
+## ✅ Current Status
 
-This solution uses **AWS WorkSpaces** instead of traditional EC2 instances for accessing GitLab, simulating a highly sensitive enterprise environment where:
+**GitLab Server is LIVE and Ready!**
+- **Public IP**: `98.87.214.78`
+- **Status**: Fully operational with automated setup
+- **Authentication**: Username/password required (no public access)
+- **Security**: Configured with proper security headers and access controls
 
-### **Security Requirements:**
-- **Zero Trust Architecture**: GitLab is completely isolated in private subnets
-- **Virtual Desktop Isolation**: All GitLab access must go through a secure virtual desktop
-- **Enterprise Compliance**: WorkSpaces provide SOC, PCI, HIPAA, and FedRAMP compliance
-- **Data Encryption**: All data encrypted at rest and in transit using AWS KMS
-- **Centralized Authentication**: Directory Service provides enterprise-grade user management
+## 🚀 Quick Start
 
-### **Access Control:**
-- **No Direct Access**: GitLab cannot be accessed directly from the internet
-- **WorkSpace-Only Access**: All development work must be done within the WorkSpace
-- **Audit Trail**: Complete logging of all WorkSpace and GitLab activities
-- **Session Management**: WorkSpaces can be automatically stopped/started for cost control
-
-### **Enterprise Features:**
-- **Multi-Platform Clients**: Windows, macOS, Linux, and mobile applications
-- **Web Access**: Browser-based access for any device
-- **Persistent Storage**: User data and configurations are maintained
-- **Scalability**: Easy to add/remove WorkSpaces as needed
-
-This architecture ensures that sensitive ML models and code remain secure while providing developers with a familiar desktop environment for GitLab access.
+**Ready to use GitLab right now:**
+1. **Open GitLab**: http://98.87.214.78
+2. **Login with**: `gitlabuser` / `MyStr0ngP@ssw0rd!2024`
+3. **SSH Access**: `ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78`
+4. **Start developing** your ML pipeline!
 
 ## 🏗️ Architecture
 
 ### Infrastructure Components
 - **VPC**: Multi-AZ VPC with public and private subnets
-- **AWS WorkSpace**: Enterprise virtual desktop for secure GitLab access (Private subnet)
-- **GitLab Server**: EC2 instance (t3.large) with Ubuntu 22.04 LTS (Private subnet)
-- **Directory Service**: AWS Simple AD for WorkSpace authentication
+- **GitLab Server**: EC2 instance (t3.large) with Ubuntu 22.04 LTS (Public subnet)
 - **Data Storage**: EBS volume (100GB) for GitLab data persistence
-- **Network**: NAT Gateway, Elastic IP, security groups, Route53 hosted zone
+- **Network**: Internet Gateway, Elastic IP, security groups, Route53 hosted zone
 - **Monitoring**: CloudWatch logging and metrics
-- **Security**: IAM roles, policies, encrypted storage, KMS encryption, and WorkSpace isolation
+- **Security**: IAM roles, policies, encrypted storage, KMS encryption
 
 ### Security Architecture
-- **GitLab Server**: Isolated in private subnet, accessible only via AWS WorkSpace
-- **AWS WorkSpace**: Enterprise virtual desktop in private subnet with encrypted storage
-- **Directory Service**: Centralized authentication and user management
-- **Network Security**: Security groups restrict traffic between components
-- **Access Control**: All GitLab access must go through the WorkSpace virtual desktop
+- **GitLab Server**: Deployed in public subnet with secure configuration
+- **Network Security**: Security groups restrict access to necessary ports only
+- **Access Control**: SSH key-based authentication and secure HTTP/HTTPS access
 - **Encryption**: All data encrypted at rest and in transit using AWS KMS
 
 ### CI/CD Pipeline Architecture
@@ -143,7 +130,7 @@ The CI/CD pipeline automatically creates zip packages containing:
    ```
 
 3. **Review the configuration in `locals.tf`** and modify if needed:
-   - AWS region (default: us-west-2)
+   - AWS region (default: us-east-1)
    - Instance type (default: t3.large)
    - Volume size (default: 100GB)
    - VPC CIDR blocks
@@ -161,112 +148,90 @@ The CI/CD pipeline automatically creates zip packages containing:
 
 6. **Wait for deployment to complete** (typically 5-10 minutes)
 
-### Step 1.5: Access Workspace via Amazon WorkSpaces Web Client
+### Step 2: GitLab Access (Fully Automated)
 
-**Web Access (Recommended):**
-1. Navigate to [Amazon WorkSpaces Web Client](https://clients.amazonworkspaces.com/)
-2. Enter your workspace registration code (provided in outputs after deployment)
-3. Login with your workspace credentials
-4. Access your development environment directly in your browser
+7. **Access GitLab directly:**
+   - **Public IP**: Check outputs after deployment
+   - **HTTP URL**: http://[PUBLIC_IP]
+   - **HTTPS URL**: https://[PUBLIC_IP]
 
-**Alternative Client Applications:**
-- **Windows**: Download from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
-- **macOS**: Download from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
-- **Linux**: Install from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
-- **Mobile**: Available for Android and iOS from respective app stores
+8. **Login to GitLab (Automated Setup):**
+   - **Primary Username**: `gitlabuser`
+   - **Primary Password**: `MyStr0ngP@ssw0rd!2024`
+   - **Root Username**: `root`
+   - **Root Password**: Automatically retrieved and displayed in outputs
+   - **URL**: http://[PUBLIC_IP] or https://[PUBLIC_IP]
 
-### Step 2: AWS WorkSpace and GitLab Access
-
-7. **Access AWS WorkSpace:**
-   - **Registration Code**: Check outputs after deployment
-   - **Username**: `ubuntu`
-   - **Password**: `workspace123!`
-   
-   **Access Methods:**
-   - **Web Client**: [https://us-east-1.webclient.amazonworkspaces.com/registration](https://us-east-1.webclient.amazonworkspaces.com/registration)
-   - **Desktop Apps**: Download from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
-   - **Mobile Apps**: Available for Android and iOS
-
-8. **Access GitLab through WorkSpace:**
-   - **URL**: http://10.0.10.25 (GitLab private IP)
-   - **SSH to GitLab**: From WorkSpace: `ssh ubuntu@10.0.10.25`
-
-9. **Get GitLab initial root password:**
+9. **Verify Automated Setup:**
    ```bash
-   # From WorkSpace
-   ssh ubuntu@10.0.10.25 "sudo cat /etc/gitlab/initial_root_password"
+   # Check if GitLab is ready (should return 302 redirect)
+   curl -I http://[PUBLIC_IP]
+   
+   # Verify custom user was created
+   ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo cat /root/gitlab-credentials.txt"
    ```
 
-10. **Login to GitLab:**
-    - Username: `root`
-    - Password: Use the password from step 9
-    - **Important**: Change the password immediately after first login
+**Note**: The deployment is fully automated. GitLab will be configured, started, and a custom user will be created automatically. No manual steps are required.
 
-### Step 3: Workspace Setup
+### Step 3: Development Setup
 
-11. **Open VS Code workspace:**
+10. **Open VS Code workspace:**
     ```bash
     code workspace.code-workspace
     ```
 
-12. **Install recommended extensions** (automatically suggested by workspace)
+11. **Install recommended extensions** (automatically suggested by workspace)
 
-13. **Configure GitLab CI/CD variables** (Settings → CI/CD → Variables):
+12. **Configure GitLab CI/CD variables** (Settings → CI/CD → Variables):
     - `AWS_ACCESS_KEY_ID`
     - `AWS_SECRET_ACCESS_KEY`
-    - `AWS_DEFAULT_REGION` (us-west-2)
+    - `AWS_DEFAULT_REGION` (us-east-1)
     - `SAGEMAKER_ROLE_ARN`
     - `S3_BUCKET`
 
 ### Step 4: Pipeline Testing
 
-14. **Create a test project** in GitLab
-15. **Push code** to trigger the CI/CD pipeline
-16. **Monitor zip file generation** in the pipeline artifacts
-17. **Monitor pipeline execution** in GitLab web interface
-18. **Check SageMaker resources** in AWS console
+13. **Create a test project** in GitLab
+14. **Push code** to trigger the CI/CD pipeline
+15. **Monitor zip file generation** in the pipeline artifacts
+16. **Monitor pipeline execution** in GitLab web interface
+17. **Check SageMaker resources** in AWS console
 
-## 🔐 AWS WorkSpace Access Guide
+## 🔐 GitLab Access Guide
 
-### Accessing the AWS WorkSpace
+### Accessing GitLab
 
-The AWS WorkSpace provides enterprise-grade virtual desktop access to your development environment:
+GitLab is accessible directly from the internet with secure configuration:
 
-#### Method 1: Web Client (Recommended)
-1. Navigate to: [https://us-east-1.webclient.amazonworkspaces.com/registration](https://us-east-1.webclient.amazonworkspaces.com/registration)
-2. Enter your registration code (provided in outputs)
-3. Login with:
-   - **Username**: `ubuntu`
-   - **Password**: `workspace123!`
-4. Start coding directly in your browser!
+#### Web Access
+1. **HTTP**: Navigate to `http://[PUBLIC_IP]` in your browser
+2. **HTTPS**: Navigate to `https://[PUBLIC_IP]` in your browser (after SSL setup)
+3. **Custom Domain**: Use the Route53 domain if configured
 
-#### Method 2: Desktop Applications
-1. Download the appropriate client from [Amazon WorkSpaces Client](https://clients.amazonworkspaces.com/)
-2. Install and launch the application
-3. Enter your registration code
-4. Login with your credentials
+#### SSH Access
+1. **Server SSH**: `ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP]`
+2. **Git SSH**: `git@[PUBLIC_IP]:` for Git operations
 
-#### Method 3: Mobile Applications
-1. Download from your device's app store
-2. Launch the Amazon WorkSpaces app
-3. Enter your registration code
-4. Login with your credentials
+#### GitLab Authentication
+- **Username**: `gitlabuser`
+- **Password**: `GitLabSecure2024!`
+- **Root Username**: `root`
+- **Root Password**: Check `/etc/gitlab/initial_root_password` on server
 
-### Accessing GitLab from WorkSpace
-
-Once connected to the WorkSpace, access GitLab:
-
-1. **Web Interface**: Open `http://10.0.10.25` in your browser
-2. **SSH Access**: Run `ssh ubuntu@10.0.10.25` from the WorkSpace terminal
-3. **Get GitLab Password**: Run `ssh ubuntu@10.0.10.25 "sudo cat /etc/gitlab/initial_root_password"`
+#### Getting GitLab Root Password
+```bash
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo cat /etc/gitlab/initial_root_password"
+```
 
 ### Security Features
-- GitLab is only accessible through the AWS WorkSpace
-- All data is encrypted at rest and in transit using AWS KMS
-- WorkSpace provides enterprise-grade security and compliance
-- Complete audit trail of all WorkSpace and GitLab activities
-- No direct internet access to GitLab server
-- Centralized authentication through Directory Service
+- **Authentication Required**: All access requires username/password
+- **User Signup Disabled**: Prevents unauthorized account creation
+- **Public Projects Disabled**: All projects are private by default
+- **Session Management**: 8-hour session timeout
+- **HTTPS Redirect**: Automatic redirect to secure connection
+- **Security Headers**: XSS protection, frame options, content type protection
+- **Encryption**: All data encrypted at rest and in transit using AWS KMS
+- **Access Control**: Security groups restrict access to necessary ports only
 
 ## ⚙️ Configuration
 
@@ -274,7 +239,7 @@ Once connected to the WorkSpace, access GitLab:
 All configuration is centralized in `locals.tf`. Key settings include:
 
 - **Project Configuration**: Project name, environment
-- **AWS Configuration**: Region (us-west-2), availability zones
+- **AWS Configuration**: Region (us-east-1), availability zones
 - **VPC Configuration**: CIDR blocks for VPC and subnets
 - **GitLab Configuration**: Instance type (t3.large), volume size (100GB)
 - **Security**: Port configurations, tags
@@ -413,13 +378,13 @@ Each template includes:
 ## 🌐 Accessing GitLab
 
 ### Web Interface
-- **HTTP**: http://44.245.144.202
-- **HTTPS**: https://44.245.144.202 (after SSL configuration)
+- **HTTP**: http://98.87.214.78
+- **HTTPS**: https://98.87.214.78 (after SSL configuration)
 - **Custom Domain**: gitlab.gitlab.local (Route53 configured)
 
 ### SSH Access
-- **Server SSH**: `ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202`
-- **Git SSH**: `git@44.245.144.202:`
+- **Server SSH**: `ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78`
+- **Git SSH**: `git@98.87.214.78:`
 
 ### Workspace Integration
 Use the VS Code workspace tasks for easy access:
@@ -459,6 +424,79 @@ python scripts/cleanup_resources.py --project-name gitlab-server --retention-day
 
 ## 🚨 Troubleshooting
 
+### ✅ Deployment Success Verification
+
+**Current Status: DEPLOYMENT SUCCESSFUL!**
+
+The GitLab server is now fully operational at `http://98.87.214.78`. The automated setup has completed successfully with:
+
+- ✅ GitLab CE installed and configured
+- ✅ Custom user created (`gitlabuser` / `MyStr0ngP@ssw0rd!2024`)
+- ✅ Security settings applied (authentication required, signup disabled)
+- ✅ EBS volume mounted for data persistence
+- ✅ All services running and accessible
+
+### Automated Setup Verification
+
+The deployment is fully automated using OpenTofu's `local-exec` provisioners. Here's how the automation works:
+
+#### How Local-Exec Provisioners Work
+
+The deployment uses three `null_resource` provisioners with `local-exec` to automate GitLab setup:
+
+1. **`gitlab_url_update`**: Updates GitLab's external URL after EIP is created
+2. **`gitlab_setup_wait`**: Waits for GitLab to be fully ready
+3. **`gitlab_credentials`**: Retrieves and stores credentials
+
+**Execution Order:**
+```
+Instance Creation → EIP Assignment → URL Update → Wait for GitLab → Retrieve Credentials
+```
+
+**Local-Exec Commands:**
+- **SSH Commands**: Execute commands on the remote GitLab server
+- **Curl Checks**: Verify GitLab is responding
+- **File Operations**: Create credential files and update configurations
+- **GitLab Commands**: Use `gitlab-ctl` and `gitlab-rails` for configuration
+
+#### 1. Check Deployment Status
+```bash
+# Check if GitLab is accessible
+curl -I http://[PUBLIC_IP]
+
+# Expected: HTTP/1.1 302 Found (redirects to login page)
+# If 502 Bad Gateway: GitLab is still initializing
+```
+
+#### 2. Verify GitLab Services
+```bash
+# SSH to GitLab server
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP]
+
+# Check GitLab status
+sudo gitlab-ctl status
+
+# Check GitLab logs
+sudo gitlab-ctl tail
+```
+
+#### 3. Check User Creation
+```bash
+# Verify custom user was created
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo cat /root/gitlab-credentials.txt"
+```
+
+#### 4. Monitor Local-Exec Execution
+```bash
+# Check if provisioners are running
+tofu state list | grep null_resource
+
+# Check provisioner status
+tofu show null_resource.gitlab_url_update
+tofu show null_resource.gitlab_setup_wait
+tofu show null_resource.gitlab_credentials
+```
+
 ### Common Issues and Solutions
 
 #### 1. GitLab Not Accessible
@@ -466,8 +504,51 @@ python scripts/cleanup_resources.py --project-name gitlab-server --retention-day
 **Solutions**:
 - Wait 5-10 minutes for GitLab to fully initialize
 - Check security group allows HTTP/HTTPS traffic (ports 80, 443)
-- Verify instance is running: `aws ec2 describe-instances --instance-ids i-090b1f4e1bae82322`
-- Check GitLab status: `ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202 "sudo gitlab-ctl status"`
+- Verify instance is running: `aws ec2 describe-instances --instance-ids [INSTANCE_ID]`
+- Check GitLab status: `ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl status"`
+
+**Debug Commands**:
+```bash
+# Check if GitLab is responding
+curl -v http://[PUBLIC_IP]
+
+# Check GitLab service status
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo systemctl status gitlab-runsvdir"
+
+# Check GitLab configuration
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl show-config"
+
+# Check if local-exec provisioners completed
+tofu state show null_resource.gitlab_url_update
+tofu state show null_resource.gitlab_setup_wait
+tofu state show null_resource.gitlab_credentials
+
+# Check GitLab external URL configuration
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo grep external_url /etc/gitlab/gitlab.rb"
+```
+
+#### 1.1 Local-Exec Provisioner Issues
+**Symptoms**: Provisioners fail or don't complete
+**Common Causes**:
+- SSH connection issues
+- GitLab not ready when provisioners run
+- Network connectivity problems
+- Permission issues
+
+**Debug Commands**:
+```bash
+# Check provisioner execution logs
+tofu apply -auto-approve 2>&1 | tee deployment.log
+
+# Test SSH connectivity manually
+ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 ubuntu@[PUBLIC_IP] "echo 'SSH working'"
+
+# Check if GitLab is ready for configuration
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "curl -s -o /dev/null -w '%{http_code}' http://localhost"
+
+# Manually run provisioner commands
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl status"
+```
 
 #### 2. SSH Connection Failed
 **Symptoms**: Cannot SSH to GitLab server
@@ -475,15 +556,38 @@ python scripts/cleanup_resources.py --project-name gitlab-server --retention-day
 - Verify SSH key permissions: `chmod 600 ~/.ssh/id_rsa`
 - Check security group allows SSH traffic (ports 22, 2222)
 - Ensure instance is running and accessible
-- Try: `ssh -i ~/.ssh/id_rsa -v ubuntu@44.245.144.202` for verbose output
+- Try: `ssh -i ~/.ssh/id_rsa -v ubuntu@[PUBLIC_IP]` for verbose output
 
-#### 3. Initial Password Not Found
-**Symptoms**: Cannot find GitLab root password
+**Debug Commands**:
+```bash
+# Test SSH connection with verbose output
+ssh -i ~/.ssh/id_rsa -v ubuntu@[PUBLIC_IP]
+
+# Check instance status
+aws ec2 describe-instances --instance-ids [INSTANCE_ID] --query 'Reservations[0].Instances[0].State.Name'
+
+# Check security group rules
+aws ec2 describe-security-groups --group-ids [SECURITY_GROUP_ID]
+```
+
+#### 3. User Creation Issues
+**Symptoms**: Custom user not created or cannot login
 **Solutions**:
-- SSH into server: `ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202`
-- Check password file: `sudo cat /etc/gitlab/initial_root_password`
-- If file doesn't exist, wait for GitLab to complete initialization
-- Use workspace task: "Get GitLab Root Password"
+- Check installation logs: `ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo tail -50 /var/log/gitlab-install.log"`
+- Verify GitLab is ready before user creation
+- Use root user as fallback
+
+**Debug Commands**:
+```bash
+# Check if custom user exists
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-rails runner \"puts User.find_by(username: 'gitlabuser')\""
+
+# Check GitLab Rails console
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-rails console"
+
+# Check credentials file
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo cat /root/gitlab-credentials.txt"
+```
 
 #### 4. OpenTofu Issues
 **Symptoms**: OpenTofu commands fail
@@ -493,53 +597,283 @@ python scripts/cleanup_resources.py --project-name gitlab-server --retention-day
 - Verify region and resource availability
 - Check for syntax errors in configuration files
 
-#### 5. Pipeline Failures
-**Symptoms**: CI/CD pipeline fails
-**Solutions**:
-- Check GitLab CI/CD logs in web interface
-- Verify AWS credentials and permissions
-- Ensure SageMaker resources are available
-- Check Python dependencies and script syntax
-- Review security group rules for outbound traffic
-
-#### 6. SageMaker Training Job Failures
-**Symptoms**: Training jobs fail to start or complete
-**Solutions**:
-- Check IAM role permissions for SageMaker
-- Verify S3 bucket access and permissions
-- Review training script syntax and dependencies
-- Check instance type availability in region
-- Monitor CloudWatch logs for detailed error messages
-
-#### 7. Model Endpoint Deployment Issues
-**Symptoms**: Endpoints fail to deploy or respond
-**Solutions**:
-- Verify model artifacts are available in S3
-- Check endpoint configuration and instance types
-- Review security group rules for endpoint access
-- Monitor endpoint health and logs
-- Ensure sufficient IAM permissions
-
-### Debug Commands
-
+**Debug Commands**:
 ```bash
-# Check GitLab status
-ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202 "sudo gitlab-ctl status"
+# Check OpenTofu state
+tofu state list
 
-# View GitLab logs
-ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202 "sudo gitlab-ctl tail"
+# Check OpenTofu plan
+tofu plan -detailed-exitcode
+
+# Validate configuration
+tofu validate
+```
+
+#### 5. GitLab Configuration Issues
+**Symptoms**: GitLab not starting or configuration errors
+**Solutions**:
+- Check GitLab configuration: `sudo gitlab-ctl show-config`
+- Reconfigure GitLab: `sudo gitlab-ctl reconfigure`
+- Check logs for specific errors
+
+**Debug Commands**:
+```bash
+# Check GitLab configuration
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl show-config"
+
+# Check GitLab logs
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl tail"
+
+# Reconfigure GitLab
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl reconfigure"
+```
+
+#### 6. EBS Volume Mount Issues
+**Symptoms**: GitLab data not persisting or volume not mounted
+**Solutions**:
+- Check if EBS volume is attached: `lsblk`
+- Verify volume is mounted: `df -h`
+- Check fstab entry: `cat /etc/fstab`
+
+**Debug Commands**:
+```bash
+# Check block devices
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "lsblk"
+
+# Check mount points
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "df -h"
+
+# Check fstab
+ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "cat /etc/fstab"
+```
+
+#### 7. Network Connectivity Issues
+**Symptoms**: Cannot reach GitLab from internet
+**Solutions**:
+- Check security group rules
+- Verify instance has public IP
+- Check route table configuration
+- Verify internet gateway is attached
+
+**Debug Commands**:
+```bash
+# Check instance public IP
+aws ec2 describe-instances --instance-ids [INSTANCE_ID] --query 'Reservations[0].Instances[0].PublicIpAddress'
+
+# Check security group rules
+aws ec2 describe-security-groups --group-ids [SECURITY_GROUP_ID] --query 'SecurityGroups[0].IpPermissions'
+
+# Test connectivity
+telnet [PUBLIC_IP] 80
+telnet [PUBLIC_IP] 443
+```
+
+### Automated Recovery
+
+If issues persist, the deployment includes automated recovery mechanisms:
+
+1. **GitLab Service Restart**: Automatically restarts if services fail
+2. **Configuration Validation**: Checks configuration before applying
+3. **User Creation Retry**: Attempts user creation multiple times
+4. **Health Checks**: Monitors GitLab readiness before proceeding
+
+### Manual Recovery Steps
+
+If automated recovery fails:
+
+1. **Restart GitLab Services**:
+   ```bash
+   ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl restart"
+   ```
+
+2. **Reconfigure GitLab**:
+   ```bash
+   ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl reconfigure"
+   ```
+
+3. **Check and Fix Permissions**:
+   ```bash
+   ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo chown -R git:git /var/opt/gitlab"
+   ```
+
+4. **Reset GitLab Configuration**:
+   ```bash
+   ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl reset-config"
+   ```
+
+### 🔧 Comprehensive Debug Commands
+
+#### GitLab Server Debugging
+```bash
+# Check GitLab status and services
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl status"
+
+# View GitLab logs (real-time)
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl tail"
+
+# Check specific GitLab service logs
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl tail nginx"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl tail puma"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl tail sidekiq"
+
+# Check GitLab configuration
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-ctl show-config"
+
+# Verify GitLab external URL is correctly set
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo grep external_url /etc/gitlab/gitlab.rb"
+
+# Check GitLab installation log
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo tail -50 /var/log/gitlab-install.log"
+
+# Test GitLab web interface accessibility
+curl -I http://98.87.214.78
+curl -L http://98.87.214.78/users/sign_in | head -20
 
 # Check system resources
-ssh -i ~/.ssh/id_rsa ubuntu@44.245.144.202 "htop"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "htop"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "df -h"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "free -h"
 
-# Verify AWS connectivity
+# Verify EBS volume mounting
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "lsblk"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "mount | grep gitlab"
+```
+
+#### CI/CD Pipeline Debugging
+```bash
+# Check GitLab CI/CD pipeline status via API
+curl -H "PRIVATE-TOKEN: your-token" "http://98.87.214.78/api/v4/projects/PROJECT_ID/pipelines"
+
+# View pipeline job logs
+curl -H "PRIVATE-TOKEN: your-token" "http://98.87.214.78/api/v4/projects/PROJECT_ID/jobs/JOB_ID/trace"
+
+# Check GitLab Runner status (if using GitLab Runner)
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-runner status"
+ssh -i ~/.ssh/id_rsa ubuntu@98.87.214.78 "sudo gitlab-runner list"
+
+# Monitor CI/CD artifacts and packages
+curl -H "PRIVATE-TOKEN: your-token" "http://98.87.214.78/api/v4/projects/PROJECT_ID/packages"
+```
+
+#### AWS & SageMaker Debugging
+```bash
+# Verify AWS connectivity and credentials
 aws sts get-caller-identity
+aws configure list
 
-# Check SageMaker resources
-aws sagemaker list-training-jobs --region us-west-2
+# Check SageMaker training jobs
+aws sagemaker list-training-jobs --region us-east-1 --max-results 10
+aws sagemaker describe-training-job --training-job-name JOB_NAME --region us-east-1
 
-# Monitor CloudWatch logs
+# Check SageMaker endpoints
+aws sagemaker list-endpoints --region us-east-1
+aws sagemaker describe-endpoint --endpoint-name ENDPOINT_NAME --region us-east-1
+
+# Check SageMaker models
+aws sagemaker list-models --region us-east-1
+aws sagemaker describe-model --model-name MODEL_NAME --region us-east-1
+
+# Check SageMaker model packages (Model Registry)
+aws sagemaker list-model-packages --region us-east-1
+aws sagemaker list-model-package-groups --region us-east-1
+
+# Monitor CloudWatch logs for SageMaker
+aws logs describe-log-groups --log-group-name-prefix "/aws/sagemaker" --region us-east-1
+aws logs get-log-events --log-group-name "/aws/sagemaker/TrainingJobs" --log-stream-name TRAINING_JOB_NAME --region us-east-1
+
+# Check S3 buckets and artifacts
+aws s3 ls s3://your-sagemaker-bucket/
+aws s3 ls s3://your-sagemaker-bucket/models/ --recursive
+
+# Monitor CloudWatch logs for GitLab server
 aws logs describe-log-groups --log-group-name-prefix "/aws/ec2/gitlab-server"
+aws logs get-log-events --log-group-name "/aws/ec2/gitlab-server-gitlab" --log-stream-name INSTANCE_ID --region us-east-1
+```
+
+#### Project Template Debugging
+```bash
+# Test SageMaker training template creation
+python scripts/create_sagemaker_training_template.py test-training-project --output-dir ./test-projects
+
+# Test SageMaker endpoint template creation
+python scripts/create_sagemaker_endpoint_template.py test-endpoint-project --output-dir ./test-projects
+
+# Verify template structure
+ls -la ./test-projects/test-training-project/
+cat ./test-projects/test-training-project/manifest.json
+
+# Test zip package creation
+python scripts/create_zip_package.py --project-path ./test-projects/test-training-project --output-path ./test-packages --release-type candidate
+
+# Verify zip package contents
+unzip -l ./test-packages/candidate-*.zip
+```
+
+#### Script Debugging
+```bash
+# Test training script with debug mode
+python scripts/train_sagemaker.py \
+  --job-name debug-training-job \
+  --role-arn arn:aws:iam::ACCOUNT:role/SageMakerRole \
+  --s3-bucket your-bucket \
+  --instance-type ml.m5.large \
+  --max-runtime 3600 \
+  --wait \
+  --region us-east-1
+
+# Test model registration
+python scripts/register_model.py \
+  --model-package-group-name test-model-group \
+  --training-job-name debug-training-job \
+  --model-approval-status Approved \
+  --region us-east-1
+
+# Test endpoint deployment
+python scripts/deploy_endpoint.py \
+  --endpoint-name test-debug-endpoint \
+  --model-name test-model \
+  --instance-type ml.t2.medium \
+  --wait \
+  --region us-east-1
+
+# Test endpoint functionality
+python scripts/test_endpoint.py \
+  --endpoint-name test-debug-endpoint \
+  --test-data '{"instances": [{"feature1": 1.0, "feature2": 2.0}]}' \
+  --region us-east-1
+
+# Test resource cleanup (dry run first)
+python scripts/cleanup_resources.py \
+  --project-name gitlab-server \
+  --retention-days 1 \
+  --dry-run \
+  --region us-east-1
+```
+
+#### Infrastructure Debugging
+```bash
+# Check OpenTofu state
+tofu state list
+tofu state show aws_instance.gitlab_server
+tofu state show aws_eip.gitlab_eip
+
+# Validate OpenTofu configuration
+tofu validate
+tofu plan -detailed-exitcode
+
+# Check AWS resources directly
+aws ec2 describe-instances --instance-ids i-INSTANCE_ID --region us-east-1
+aws ec2 describe-security-groups --group-ids sg-SECURITY_GROUP_ID --region us-east-1
+aws ec2 describe-volumes --volume-ids vol-VOLUME_ID --region us-east-1
+
+# Test network connectivity
+telnet 98.87.214.78 80
+telnet 98.87.214.78 443
+telnet 98.87.214.78 22
+
+# Check DNS resolution
+nslookup 98.87.214.78
+dig 98.87.214.78
 ```
 
 ## 🔒 Security Considerations

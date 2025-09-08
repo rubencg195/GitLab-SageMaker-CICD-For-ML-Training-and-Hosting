@@ -20,36 +20,15 @@ output "private_subnet_ids" {
   value       = aws_subnet.private_subnets[*].id
 }
 
-# AWS WorkSpaces Outputs
-output "workspace_id" {
-  description = "ID of the AWS WorkSpace"
-  value       = aws_workspaces_workspace.workspace.id
+# GitLab Public Access Outputs
+output "gitlab_public_ip" {
+  description = "Public IP address of the GitLab server"
+  value       = aws_eip.gitlab_eip.public_ip
 }
 
-output "workspace_ip_address" {
-  description = "IP address of the AWS WorkSpace"
-  value       = aws_workspaces_workspace.workspace.ip_address
-}
-
-output "workspace_directory_id" {
-  description = "ID of the WorkSpaces directory"
-  value       = aws_workspaces_directory.workspace_directory.id
-}
-
-output "workspace_username" {
-  description = "Username for workspace access"
-  value       = local.workspace_username
-}
-
-output "workspace_password" {
-  description = "Password for workspace access"
-  value       = local.workspace_password
-  sensitive   = true
-}
-
-output "workspace_registration_code" {
-  description = "Registration code for Amazon WorkSpaces web client"
-  value       = "WORKSPACE-${substr(aws_workspaces_workspace.workspace.id, -8, -1)}-${substr(aws_workspaces_workspace.workspace.ip_address, -4, -1)}"
+output "gitlab_public_dns" {
+  description = "Public DNS name of the GitLab server"
+  value       = aws_instance.gitlab_server.public_dns
 }
 
 # GitLab Server Outputs
@@ -68,32 +47,22 @@ output "gitlab_elastic_ip" {
   value       = aws_eip.gitlab_eip.public_ip
 }
 
-# GitLab Access URLs (via Workspace)
+# GitLab Access URLs (Public)
 output "gitlab_http_url" {
-  description = "HTTP URL to access GitLab via workspace"
-  value       = "http://${aws_instance.gitlab_server.private_ip}"
+  description = "HTTP URL to access GitLab"
+  value       = "http://${aws_eip.gitlab_eip.public_ip}"
 }
 
 output "gitlab_https_url" {
-  description = "HTTPS URL to access GitLab via workspace"
-  value       = "https://${aws_instance.gitlab_server.private_ip}"
+  description = "HTTPS URL to access GitLab"
+  value       = "https://${aws_eip.gitlab_eip.public_ip}"
 }
 
 output "gitlab_ssh_url" {
-  description = "SSH URL for Git operations via workspace"
-  value       = "git@${aws_instance.gitlab_server.private_ip}:"
+  description = "SSH URL for Git operations"
+  value       = "git@${aws_eip.gitlab_eip.public_ip}:"
 }
 
-# WorkSpaces Access URLs
-output "workspace_web_client_url" {
-  description = "Amazon WorkSpaces Web Client URL"
-  value       = "https://us-east-1.webclient.amazonworkspaces.com/registration"
-}
-
-output "workspace_directory_dns" {
-  description = "DNS name of the WorkSpaces directory"
-  value       = aws_directory_service_directory.workspace_ad.dns_ip_addresses
-}
 
 # Security Group Outputs
 output "gitlab_security_group_id" {
@@ -136,53 +105,63 @@ output "gitlab_instance_profile_name" {
 }
 
 # Connection Information
-output "workspace_connection_instructions" {
-  description = "Instructions for connecting to AWS WorkSpace"
-  value       = "Use Amazon WorkSpaces web client at https://us-east-1.webclient.amazonworkspaces.com/registration with registration code and directory credentials"
-}
-
 output "gitlab_ssh_connection_command" {
-  description = "SSH command to connect to GitLab server via WorkSpace"
-  value       = "From WorkSpace: ssh ${local.ssh_user}@${aws_instance.gitlab_server.private_ip}"
+  description = "SSH command to connect to GitLab server"
+  value       = "ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_eip.gitlab_eip.public_ip}"
 }
 
-# Workspace Setup Instructions
-output "workspace_setup_instructions" {
-  description = "Instructions for workspace and GitLab access"
+# GitLab Credentials
+output "gitlab_username" {
+  description = "GitLab primary username for authentication"
+  value       = local.gitlab_username
+}
+
+output "gitlab_password" {
+  description = "GitLab primary password for authentication"
+  value       = local.gitlab_password
+  sensitive   = true
+}
+
+output "gitlab_root_username" {
+  description = "GitLab root username"
+  value       = "root"
+}
+
+output "gitlab_root_password" {
+  description = "GitLab root password (retrieved from server)"
+  value       = "Check /etc/gitlab/initial_root_password on server"
+  sensitive   = true
+}
+
+# GitLab Setup Instructions
+output "gitlab_setup_instructions" {
+  description = "Instructions for GitLab access"
   value = <<-EOT
-    Workspace and GitLab have been deployed successfully!
+    GitLab has been deployed successfully!
     
-    WORKSPACE ACCESS:
-    - WorkSpace ID: ${aws_workspaces_workspace.workspace.id}
-    - Username: ${local.workspace_username}
-    - Password: ${local.workspace_password}
-    - Registration Code: WORKSPACE-${substr(aws_workspaces_workspace.workspace.id, -8, -1)}-${substr(aws_workspaces_workspace.workspace.ip_address, -4, -1)}
-    - Directory DNS: ${join(", ", aws_directory_service_directory.workspace_ad.dns_ip_addresses)}
+    GITLAB ACCESS:
+    - Public IP: ${aws_eip.gitlab_eip.public_ip}
+    - Public DNS: ${aws_instance.gitlab_server.public_dns}
+    - HTTP: http://${aws_eip.gitlab_eip.public_ip}
+    - HTTPS: https://${aws_eip.gitlab_eip.public_ip}
+    - SSH: ssh -i ~/.ssh/id_rsa ${local.ssh_user}@${aws_eip.gitlab_eip.public_ip}
     
-    WorkSpace Access Methods:
-    1. Amazon WorkSpaces Web Client: https://us-east-1.webclient.amazonworkspaces.com/registration
-    2. Amazon WorkSpaces Client Applications (Windows, macOS, Linux, Mobile)
+    AUTHENTICATION REQUIRED:
+    - Primary Username: ${local.gitlab_username}
+    - Primary Password: ${local.gitlab_password}
     
-    GITLAB ACCESS (via Workspace):
-    - Private IP: ${aws_instance.gitlab_server.private_ip}
-    - HTTP: http://${aws_instance.gitlab_server.private_ip}
-    - HTTPS: https://${aws_instance.gitlab_server.private_ip}
-    
-    To access GitLab:
-    1. Connect to WorkSpace using Amazon WorkSpaces client
-    2. From WorkSpace, access GitLab at http://${aws_instance.gitlab_server.private_ip}
-    3. To get GitLab root password, run from WorkSpace:
-       ssh ${local.ssh_user}@${aws_instance.gitlab_server.private_ip} "sudo cat /etc/gitlab/initial_root_password"
-    
-    Default GitLab username: root
+    ROOT ACCESS (if needed):
+    - Username: root
+    - Password: Check /etc/gitlab/initial_root_password on the server
     
     SECURITY FEATURES:
-    - GitLab is in a private subnet and only accessible through WorkSpace
-    - WorkSpace provides enterprise-grade security and compliance
-    - All data is encrypted at rest and in transit
-    - WorkSpace acts as a secure virtual desktop for GitLab access
-    - Directory Service provides centralized authentication
+    - Authentication is required for all access
+    - User signup is disabled
+    - Public projects are disabled by default
+    - Session timeout: 8 hours
+    - HTTPS redirect enabled
+    - Security headers configured
     
-    Note: WorkSpace may take 10-15 minutes to fully initialize. GitLab will be ready shortly after.
+    Note: GitLab may take 5-10 minutes to fully initialize after deployment.
   EOT
 }

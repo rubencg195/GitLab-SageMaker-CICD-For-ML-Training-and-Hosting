@@ -119,91 +119,46 @@ resource "aws_route_table_association" "private_rta" {
   route_table_id = aws_route_table.private_rt.id
 }
 
-# Security Group for WorkSpaces Directory
-resource "aws_security_group" "workspace_sg" {
-  name_prefix = "${local.project_name}-workspace-"
-  vpc_id      = aws_vpc.gitlab_vpc.id
 
-  # WorkSpaces PCoIP access
-  ingress {
-    from_port   = 4172
-    to_port     = 4172
-    protocol    = "udp"
-    cidr_blocks = [local.internet_cidr]
-    description = "WorkSpaces PCoIP access"
-  }
-
-  # WorkSpaces PCoIP access (TCP)
-  ingress {
-    from_port   = 4172
-    to_port     = 4172
-    protocol    = local.tcp_protocol
-    cidr_blocks = [local.internet_cidr]
-    description = "WorkSpaces PCoIP access (TCP)"
-  }
-
-  # WorkSpaces WSP access
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = local.tcp_protocol
-    cidr_blocks = [local.internet_cidr]
-    description = "WorkSpaces WSP access"
-  }
-
-  # All outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = local.all_protocols
-    cidr_blocks = [local.internet_cidr]
-    description = "All outbound traffic"
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${local.project_name}-workspace-sg"
-  })
-}
-
-# Security Group for GitLab Server (Private)
+# Security Group for GitLab Server (Public)
 resource "aws_security_group" "gitlab_sg" {
   name_prefix = "${local.project_name}-gitlab-"
   vpc_id      = aws_vpc.gitlab_vpc.id
 
-  # SSH access from WorkSpaces directory only
+  # SSH access from anywhere
   ingress {
     from_port       = local.gitlab_ssh_port
     to_port         = local.gitlab_ssh_port
     protocol        = local.tcp_protocol
-    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
-    description     = "SSH access from WorkSpaces directory"
+    cidr_blocks     = [local.internet_cidr]
+    description     = "SSH access from anywhere"
   }
 
-  # HTTP access from WorkSpaces directory only
+  # HTTP access from anywhere
   ingress {
     from_port       = local.gitlab_http_port
     to_port         = local.gitlab_http_port
     protocol        = local.tcp_protocol
-    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
-    description     = "HTTP access from WorkSpaces directory"
+    cidr_blocks     = [local.internet_cidr]
+    description     = "HTTP access from anywhere"
   }
 
-  # HTTPS access from WorkSpaces directory only
+  # HTTPS access from anywhere
   ingress {
     from_port       = local.gitlab_https_port
     to_port         = local.gitlab_https_port
     protocol        = local.tcp_protocol
-    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
-    description     = "HTTPS access from WorkSpaces directory"
+    cidr_blocks     = [local.internet_cidr]
+    description     = "HTTPS access from anywhere"
   }
 
-  # GitLab SSH access (alternative port) from WorkSpaces directory only
+  # GitLab SSH access (alternative port) from anywhere
   ingress {
     from_port       = local.gitlab_ssh_port_alt
     to_port         = local.gitlab_ssh_port_alt
     protocol        = local.tcp_protocol
-    cidr_blocks     = aws_subnet.private_subnets[*].cidr_block
-    description     = "GitLab SSH access from WorkSpaces directory"
+    cidr_blocks     = [local.internet_cidr]
+    description     = "GitLab SSH access from anywhere"
   }
 
   # All outbound traffic
@@ -240,89 +195,16 @@ resource "aws_ebs_volume" "gitlab_data" {
   })
 }
 
-# AWS WorkSpaces Directory
-resource "aws_workspaces_directory" "workspace_directory" {
-  directory_id = aws_directory_service_directory.workspace_ad.id
-  subnet_ids   = aws_subnet.private_subnets[*].id
 
-  tags = merge(local.common_tags, {
-    Name = "${local.project_name}-workspace-directory"
-  })
-}
-
-# AWS Directory Service (Simple AD)
-resource "aws_directory_service_directory" "workspace_ad" {
-  name     = "workspace.${local.domain_name}"
-  password = local.workspace_password
-  size     = "Small"
-
-  vpc_settings {
-    vpc_id     = aws_vpc.gitlab_vpc.id
-    subnet_ids = aws_subnet.private_subnets[*].id
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${local.project_name}-workspace-ad"
-  })
-}
-
-# AWS WorkSpace
-resource "aws_workspaces_workspace" "workspace" {
-  directory_id = aws_workspaces_directory.workspace_directory.id
-  bundle_id    = data.aws_workspaces_bundle.workspace_bundle.id
-  user_name    = local.workspace_username
-
-  root_volume_encryption_enabled = true
-  user_volume_encryption_enabled  = true
-  volume_encryption_key           = aws_kms_key.workspace_key.arn
-
-  workspace_properties {
-    compute_type_name                         = "STANDARD"
-    user_volume_size_gib                      = 50
-    root_volume_size_gib                      = 80
-    running_mode                              = "AUTO_STOP"
-    running_mode_auto_stop_timeout_in_minutes = 60
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${local.project_name}-workspace"
-    Role = "workspace"
-    Application = "workspace"
-  })
-
-  depends_on = [aws_workspaces_directory.workspace_directory]
-}
-
-# KMS Key for WorkSpace encryption
-resource "aws_kms_key" "workspace_key" {
-  description             = "KMS key for WorkSpace encryption"
-  deletion_window_in_days = 7
-
-  tags = merge(local.common_tags, {
-    Name = "${local.project_name}-workspace-key"
-  })
-}
-
-# KMS Key Alias
-resource "aws_kms_alias" "workspace_key_alias" {
-  name          = "alias/${local.project_name}-workspace-key"
-  target_key_id = aws_kms_key.workspace_key.key_id
-}
-
-# Data source for WorkSpace bundle
-data "aws_workspaces_bundle" "workspace_bundle" {
-  bundle_id = "wsb-1jjj1k0kj" # Amazon Linux 2 (Standard) bundle
-}
-
-# GitLab EC2 Instance (Private)
+# GitLab EC2 Instance (Public)
 resource "aws_instance" "gitlab_server" {
   ami                    = local.ubuntu_ami_id
   instance_type          = local.gitlab_instance_type
   key_name               = aws_key_pair.gitlab_key.key_name
   vpc_security_group_ids = [aws_security_group.gitlab_sg.id]
-  subnet_id              = aws_subnet.private_subnets[0].id
+  subnet_id              = aws_subnet.public_subnets[0].id
   iam_instance_profile   = aws_iam_instance_profile.gitlab_profile.name
-  associate_public_ip_address = false
+  associate_public_ip_address = true
 
   root_block_device {
     volume_type = local.root_volume_type
@@ -331,12 +213,11 @@ resource "aws_instance" "gitlab_server" {
   }
 
   user_data = base64encode(templatefile("${path.module}/scripts/gitlab-install.sh", {
-    gitlab_external_url = local.gitlab_external_url
+    gitlab_username = local.gitlab_username
+    gitlab_password = local.gitlab_password
   }))
 
   tags = local.gitlab_tags
-
-  depends_on = [aws_nat_gateway.gitlab_nat]
 }
 
 # Attach EBS volume to GitLab instance
@@ -445,4 +326,70 @@ resource "aws_iam_instance_profile" "gitlab_profile" {
   role = aws_iam_role.gitlab_role.name
 
   tags = local.common_tags
+}
+
+# Local-exec provisioner to wait for GitLab and retrieve credentials
+resource "null_resource" "gitlab_setup_wait" {
+  depends_on = [aws_instance.gitlab_server]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for GitLab to be ready..."
+      max_attempts=60
+      attempt=1
+      
+      while [ $attempt -le $max_attempts ]; do
+        if curl -s -f http://${aws_instance.gitlab_server.public_ip}/users/sign_in > /dev/null 2>&1; then
+          echo "GitLab is ready!"
+          break
+        fi
+        echo "Attempt $attempt/$max_attempts: GitLab not ready yet, waiting..."
+        sleep 10
+        ((attempt++))
+      done
+      
+      if [ $attempt -gt $max_attempts ]; then
+        echo "GitLab failed to become ready after $max_attempts attempts"
+        exit 1
+      fi
+    EOT
+  }
+
+  triggers = {
+    instance_id = aws_instance.gitlab_server.id
+  }
+}
+
+# Local-exec provisioner to retrieve GitLab credentials
+resource "null_resource" "gitlab_credentials" {
+  depends_on = [null_resource.gitlab_setup_wait]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Retrieving GitLab credentials..."
+      
+      # Get root password
+      ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ubuntu@${aws_instance.gitlab_server.public_ip} "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | cut -d' ' -f2")
+      
+      # Get custom user credentials
+      USER_CREDS=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR ubuntu@${aws_instance.gitlab_server.public_ip} "sudo cat /root/gitlab-credentials.txt 2>/dev/null || echo 'Custom user not created'")
+      
+      echo "GitLab Setup Complete!"
+      echo "======================"
+      echo "URL: http://${aws_instance.gitlab_server.public_ip}"
+      echo "Primary Username: ${local.gitlab_username}"
+      echo "Primary Password: ${local.gitlab_password}"
+      echo "Root Username: root"
+      echo "Root Password: $ROOT_PASSWORD"
+      echo ""
+      echo "Custom User Credentials:"
+      echo "$USER_CREDS"
+      echo ""
+      echo "You can now access GitLab at: http://${aws_instance.gitlab_server.public_ip}"
+    EOT
+  }
+
+  triggers = {
+    setup_wait = null_resource.gitlab_setup_wait.id
+  }
 }

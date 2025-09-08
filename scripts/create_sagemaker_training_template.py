@@ -90,7 +90,7 @@ stages:
 
 variables:
   PROJECT_NAME: "{project_name}"
-  AWS_DEFAULT_REGION: "us-west-2"
+  AWS_DEFAULT_REGION: "us-east-1"
   SAGEMAKER_ROLE_ARN: "$SAGEMAKER_ROLE_ARN"
   S3_BUCKET: "$S3_BUCKET"
 

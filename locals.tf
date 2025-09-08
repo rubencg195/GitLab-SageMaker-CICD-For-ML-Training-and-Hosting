@@ -4,8 +4,8 @@ locals {
   environment  = "production"
   
   # AWS Configuration
-  aws_region = "us-west-2"
-  availability_zones = ["us-west-2a", "us-west-2b"]
+  aws_region = "us-east-1"
+  availability_zones = ["us-east-1a", "us-east-1b"]
   
   # VPC Configuration
   vpc_cidr = "10.0.0.0/16"
@@ -16,7 +16,7 @@ locals {
   gitlab_instance_type = "t3.large"
   gitlab_volume_size = 100
   gitlab_volume_type = "gp3"
-  ubuntu_ami_id = "ami-02de260c9d93d7b98" # Ubuntu 22.04 LTS in us-west-2
+  ubuntu_ami_id = "ami-0bbdd8c17ed981ef9" # Ubuntu 22.04 LTS in us-east-1
   
   # Root Volume Configuration
   root_volume_size = 20
@@ -49,8 +49,12 @@ locals {
   # CloudWatch Configuration
   log_retention_days = 30
   
-  # GitLab External URL (placeholder)
+  # GitLab External URL (will be set dynamically)
   gitlab_external_url = "http://CHANGE_ME_AFTER_DEPLOYMENT"
+  
+  # GitLab Credentials
+  gitlab_username = "gitlabuser"
+  gitlab_password = "MyStr0ngP@ssw0rd!2024"
   
   # Workspace Configuration
   workspace_username = "ubuntu"
