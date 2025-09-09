@@ -246,7 +246,8 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 ├── provisioning.tf                 # GitLab setup and provisioning
 ├── server-scripts/                 # Server automation scripts
 │   ├── gitlab-install.sh          # GitLab installation script
-│   └── check_gitlab_health.py     # Health check automation
+│   ├── check_gitlab_health.sh     # Bash health check script (recommended)
+│   └── check_gitlab_health.py     # Python health check script (legacy)
 └── images/                         # Screenshots and documentation images
     └── local-login-gitlab.png     # GitLab login screenshot
 ```
@@ -262,22 +263,37 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 
 ## 🔧 Available Scripts
 
-### GitLab Health Check
+### GitLab Health Check (Bash Version - Recommended)
 ```bash
-# Automated health check to verify GitLab is working correctly
+# Automated health check with 12 retries (~10 minute monitoring window)
+./server-scripts/check_gitlab_health.sh
+
+# With verbose output to see detailed progress
+./server-scripts/check_gitlab_health.sh --verbose
+
+# With specific IP (auto-detected if not provided)
+./server-scripts/check_gitlab_health.sh --gitlab-ip YOUR_IP
+
+# Custom retry settings
+./server-scripts/check_gitlab_health.sh --retries 15 --interval 40
+```
+
+**What it checks:**
+- ✅ Network connectivity to GitLab (HTTP/HTTPS)
+- ✅ SSH connectivity to server
+- ✅ GitLab services status (all 9 services)
+- ✅ Web interface accessibility (login page)
+- ✅ Root password retrieval
+- ✅ Comprehensive health reporting
+
+### Python Health Check (Legacy)
+```bash
+# Legacy Python health check (still available)
 python server-scripts/check_gitlab_health.py
 
 # With specific IP (auto-detected if not provided)
 python server-scripts/check_gitlab_health.py --gitlab-ip YOUR_IP
 ```
-
-**What it checks:**
-- ✅ Network connectivity to GitLab
-- ✅ SSH connectivity to server
-- ✅ GitLab services status
-- ✅ Web interface accessibility
-- ✅ External URL configuration
-- ✅ System resources
 
 ### Command Line Access
 ```bash
@@ -301,6 +317,99 @@ tofu output gitlab_ssh_connection_command | bash
 ### Cost Monitoring
 - **AWS Cost Explorer**: Track resource usage
 - **Resource Tagging**: All resources properly tagged
+
+## 🔄 Complete Deployment Cycle
+
+### Full Destroy/Reapply/Monitor Cycle
+
+This section shows how to perform a complete infrastructure refresh cycle with monitoring.
+
+#### Step 1: Destroy Current Infrastructure
+```bash
+# Destroy all resources
+tofu destroy -auto-approve
+```
+
+#### Step 2: Reapply Infrastructure
+```bash
+# Recreate all resources
+tofu apply -auto-approve
+```
+
+#### Step 3: Monitor with Health Check Script
+```bash
+# Monitor deployment with comprehensive health checks
+./server-scripts/check_gitlab_health.sh --verbose
+```
+
+### Example Health Check Output
+
+#### During Deployment (Pending State)
+```
+[2025-09-09 19:20:00] =========================================
+[2025-09-09 19:20:00] GitLab Health Check Script (Bash Version)
+[2025-09-09 19:20:00] Started: Tue, Sep  9, 2025  7:20:00 PM
+[2025-09-09 19:20:00] =========================================
+Auto-detecting GitLab IP from OpenTofu outputs...
+SUCCESS: GitLab IP detected: 34.228.48.181
+[2025-09-09 19:20:01] Configuration: 12 retries, 50s intervals (~10 minutes total)
+
+[2025-09-09 19:20:01] === HEALTH CHECK ATTEMPT 1/12 ===
+[2025-09-09 19:20:01] Checking GitLab at 34.228.48.181...
+INFO: Checking HTTP connectivity to http://34.228.48.181
+WARNING: HTTP not ready: 
+[2025-09-09 19:20:04] ❌ HTTP connectivity failed
+[2025-09-09 19:20:04] ⏳ Attempt 1 failed. Waiting 50s before retry...
+INFO: Waiting 50 seconds... (Attempt 1/12)
+
+[2025-09-09 19:20:54] === HEALTH CHECK ATTEMPT 2/12 ===
+[2025-09-09 19:20:55] Checking GitLab at 34.228.48.181...
+INFO: Checking HTTP connectivity to http://34.228.48.181
+WARNING: HTTP not ready: 
+[2025-09-09 19:20:57] ❌ HTTP connectivity failed
+[2025-09-09 19:20:57] ⏳ Attempt 2 failed. Waiting 50s before retry...
+INFO: Waiting 50 seconds... (Attempt 2/12)
+
+[2025-09-09 19:24:25] === HEALTH CHECK ATTEMPT 6/12 ===
+[2025-09-09 19:24:25] Checking GitLab at 34.228.48.181...
+INFO: Checking HTTP connectivity to http://34.228.48.181
+WARNING: HTTP not ready: HTTP/1.1 502 Bad Gateway
+[2025-09-09 19:24:25] ❌ HTTP connectivity failed
+[2025-09-09 19:24:25] ⏳ Attempt 6 failed. Waiting 50s before retry...
+INFO: Waiting 50 seconds... (Attempt 6/12)
+```
+
+#### When GitLab is Ready (Success State)
+```
+[2025-09-09 19:26:06] === HEALTH CHECK ATTEMPT 8/12 ===
+[2025-09-09 19:26:06] Checking GitLab at 34.228.48.181...
+INFO: Checking HTTP connectivity to http://34.228.48.181
+SUCCESS: HTTP connectivity: HTTP/1.1 302 Found
+INFO: Checking SSH connectivity to 34.228.48.181
+SUCCESS: SSH connectivity working
+INFO: Checking GitLab services status
+SUCCESS: GitLab services running
+INFO: Checking GitLab web interface
+SUCCESS: GitLab web interface accessible
+[2025-09-09 19:26:13] 🎉 ALL HEALTH CHECKS PASSED!
+[2025-09-09 19:26:13] ✅ GitLab is fully operational
+[2025-09-09 19:26:13] 🌐 URL: http://34.228.48.181
+[2025-09-09 19:26:13] 👤 Username: root
+[2025-09-09 19:26:13] 🔑 Password: GJUjzG5zcPJ4G7/LOugmQcka2cs0x6D3j3yeRLioJwA=
+SUCCESS: 🎉 GitLab is ready and fully operational!
+[2025-09-09 19:26:13] Health check completed successfully after 350 seconds
+```
+
+### Quick Cycle Commands
+```bash
+# One-liner for complete cycle
+tofu destroy -auto-approve && tofu apply -auto-approve && ./server-scripts/check_gitlab_health.sh --verbose
+
+# Or step by step
+echo "🔥 Destroying infrastructure..." && tofu destroy -auto-approve
+echo "🔄 Reapplying infrastructure..." && tofu apply -auto-approve  
+echo "📊 Monitoring deployment..." && ./server-scripts/check_gitlab_health.sh --verbose
+```
 
 ## 🧹 Cleanup
 
@@ -368,7 +477,17 @@ ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl show-config"
 
 ### Automated Health Check
 ```bash
-# Run comprehensive health check
+# Run comprehensive health check (Bash version - recommended)
+./server-scripts/check_gitlab_health.sh --verbose
+
+# Expected output for healthy system:
+# 🎉 ALL HEALTH CHECKS PASSED!
+# ✅ GitLab is fully operational
+# 🌐 URL: http://YOUR_IP
+# 👤 Username: root
+# 🔑 Password: [retrieved automatically]
+
+# Legacy Python version (still available)
 python server-scripts/check_gitlab_health.py
 
 # Expected output for healthy system:
@@ -419,7 +538,7 @@ python server-scripts/check_gitlab_health.py
 
 **✅ Your GitLab server is ready to use immediately!**
 
-1. **Verify status** (optional): `python server-scripts/check_gitlab_health.py`
+1. **Verify status** (optional): `./server-scripts/check_gitlab_health.sh --verbose`
 2. **Access GitLab**: Use the URL from `tofu output gitlab_http_url` 
 3. **Get root password**: Use the command from `tofu output gitlab_root_password`
 4. **Login with root credentials** and start using GitLab
@@ -467,6 +586,14 @@ This optimized GitLab deployment provides everything needed for Git repository h
 - **Git Data Dirs**: Removed deprecated `git_data_dirs` configuration (removed in GitLab 18.0)
 - **Service Stability**: All GitLab services now start reliably without configuration errors
 - **Performance Preserved**: All valid performance optimizations maintained (monitoring services disabled)
+
+### 🚀 Health Check Script Improvements (Latest Update)
+- **Bash Health Check Script**: New `check_gitlab_health.sh` with 12 retries (~10 minute monitoring window)
+- **Comprehensive Monitoring**: HTTP, SSH, services, web interface, and root password checks
+- **Real-time Progress**: Verbose output shows detailed progress during deployment
+- **Auto IP Detection**: Automatically detects GitLab IP from OpenTofu outputs
+- **Production Ready**: Handles edge cases, timeouts, and provides clear status reporting
+- **Legacy Support**: Python version still available for backward compatibility
 
 ---
 
