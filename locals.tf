@@ -13,9 +13,11 @@ locals {
   private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
   
   # GitLab Configuration
-  gitlab_instance_type = "t3.large"
+  # Instance type: t3.large (recommended), t3.xlarge/c5.xlarge (faster setup), t3.medium (minimal)
+  # For faster deployment, consider: t3.xlarge, c5.xlarge, m5.xlarge
+  gitlab_instance_type = "t3.large"  
   gitlab_volume_size = 100
-  gitlab_volume_type = "gp3"
+  gitlab_volume_type = "gp3"  # gp3 provides better performance than gp2
   ubuntu_ami_id = "ami-0bbdd8c17ed981ef9" # Ubuntu 22.04 LTS in us-east-1
   
   # Root Volume Configuration

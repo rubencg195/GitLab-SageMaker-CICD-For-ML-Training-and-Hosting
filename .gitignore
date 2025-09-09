@@ -8,6 +8,9 @@
 .terraformrc
 terraform.rc
 
+# Output files
+.out/
+
 # Python
 __pycache__/
 *.py[cod]
