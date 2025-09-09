@@ -104,6 +104,47 @@ output "gitlab_instance_profile_name" {
   value       = aws_iam_instance_profile.gitlab_profile.name
 }
 
+output "gitlab_ci_iam_role_arn" {
+  description = "ARN of the IAM role for GitLab CI/CD"
+  value       = aws_iam_role.gitlab_ci_role.arn
+}
+
+output "gitlab_ci_instance_profile_name" {
+  description = "Name of the instance profile for GitLab CI/CD"
+  value       = aws_iam_instance_profile.gitlab_ci_profile.name
+}
+
+# S3 Bucket Outputs
+output "gitlab_artifacts_bucket_name" {
+  description = "Name of the S3 bucket for GitLab CI/CD artifacts"
+  value       = aws_s3_bucket.gitlab_artifacts.bucket
+}
+
+output "gitlab_artifacts_bucket_arn" {
+  description = "ARN of the S3 bucket for GitLab CI/CD artifacts"
+  value       = aws_s3_bucket.gitlab_artifacts.arn
+}
+
+output "gitlab_artifacts_bucket_domain_name" {
+  description = "Domain name of the S3 bucket for GitLab CI/CD artifacts"
+  value       = aws_s3_bucket.gitlab_artifacts.bucket_domain_name
+}
+
+output "gitlab_releases_bucket_name" {
+  description = "Name of the S3 bucket for GitLab releases"
+  value       = aws_s3_bucket.gitlab_releases.bucket
+}
+
+output "gitlab_releases_bucket_arn" {
+  description = "ARN of the S3 bucket for GitLab releases"
+  value       = aws_s3_bucket.gitlab_releases.arn
+}
+
+output "gitlab_releases_bucket_domain_name" {
+  description = "Domain name of the S3 bucket for GitLab releases"
+  value       = aws_s3_bucket.gitlab_releases.bucket_domain_name
+}
+
 # Connection Information
 output "gitlab_ssh_connection_command" {
   description = "SSH command to connect to GitLab server"

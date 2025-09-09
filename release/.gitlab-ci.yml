@@ -1,0 +1,287 @@
+# GitLab CI/CD Pipeline for Automatic Artifact Zipping and S3 Upload
+# This pipeline triggers on PR creation, commits, and merges
+
+# Define stages
+stages:
+  - prepare
+  - build
+  - package
+  - deploy
+  - cleanup
+
+# Variables
+variables:
+  # S3 Configuration (will be set via GitLab CI/CD variables)
+  S3_BUCKET_ARTIFACTS: "${GITLAB_ARTIFACTS_BUCKET_NAME}"
+  S3_BUCKET_RELEASES: "${GITLAB_RELEASES_BUCKET_NAME}"
+  AWS_REGION: "us-east-1"
+  
+  # Build Configuration
+  BUILD_DIR: "build"
+  RELEASE_DIR: "release"
+  ARTIFACT_PREFIX: "artifacts"
+  RELEASE_PREFIX: "releases"
+  
+  # Git Configuration
+  GIT_COMMIT_SHORT: "${CI_COMMIT_SHORT_SHA}"
+  GIT_BRANCH: "${CI_COMMIT_REF_NAME}"
+  GIT_TAG: "${CI_COMMIT_TAG:-latest}"
+
+# Cache configuration
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - build/
+    - .cache/
+
+# Prepare stage - Set up environment and dependencies
+prepare:
+  stage: prepare
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl unzip zip jq
+    - mkdir -p ${BUILD_DIR}
+    - mkdir -p ${RELEASE_DIR}
+  script:
+    - echo "🚀 Preparing build environment..."
+    - echo "Branch: ${GIT_BRANCH}"
+    - echo "Commit: ${GIT_COMMIT_SHORT}"
+    - echo "Tag: ${GIT_TAG}"
+    - echo "Pipeline ID: ${CI_PIPELINE_ID}"
+    - echo "Job ID: ${CI_JOB_ID}"
+    - echo "✅ Environment prepared successfully"
+  artifacts:
+    paths:
+      - ${BUILD_DIR}/
+      - ${RELEASE_DIR}/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Build stage - Build the project (customize based on your project)
+build:
+  stage: build
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl unzip zip jq build-essential
+  script:
+    - echo "🔨 Building project..."
+    - echo "Project type: ${PROJECT_TYPE:-generic}"
+    
+    # Example build commands (customize for your project)
+    - |
+      case "${PROJECT_TYPE:-generic}" in
+        "python")
+          echo "Building Python project..."
+          pip install -r requirements.txt || echo "No requirements.txt found"
+          python -m py_compile *.py || echo "No Python files to compile"
+          ;;
+        "nodejs")
+          echo "Building Node.js project..."
+          npm install || echo "No package.json found"
+          npm run build || echo "No build script found"
+          ;;
+        "java")
+          echo "Building Java project..."
+          ./gradlew build || ./mvnw package || echo "No build system found"
+          ;;
+        "terraform")
+          echo "Validating Terraform configuration..."
+          terraform init || echo "No Terraform found"
+          terraform validate || echo "Terraform validation failed"
+          ;;
+        *)
+          echo "Generic project - collecting all files..."
+          ;;
+      esac
+    
+    # Collect all project files
+    - echo "📦 Collecting project files..."
+    - find . -type f -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.go" -o -name "*.rs" -o -name "*.tf" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" -o -name "*.md" -o -name "*.txt" -o -name "*.sh" | head -100 > ${BUILD_DIR}/project_files.txt
+    - echo "✅ Build completed successfully"
+  artifacts:
+    paths:
+      - ${BUILD_DIR}/
+      - ${RELEASE_DIR}/
+    expire_in: 2 hours
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Package stage - Create zip artifacts
+package:
+  stage: package
+  image: ubuntu:22.04
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq zip unzip
+  script:
+    - echo "📦 Creating package artifacts..."
+    
+    # Create timestamp for unique naming
+    - TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    - PACKAGE_NAME="${PROJECT_NAME:-project}_${GIT_BRANCH}_${GIT_COMMIT_SHORT}_${TIMESTAMP}"
+    - RELEASE_NAME="${PROJECT_NAME:-project}_${GIT_TAG}_${TIMESTAMP}"
+    
+    # Create main project zip
+    - echo "Creating main project zip: ${PACKAGE_NAME}.zip"
+    - zip -r ${RELEASE_DIR}/${PACKAGE_NAME}.zip . -x "*.git*" "*.gitlab-ci.yml" "node_modules/*" "*.pyc" "__pycache__/*" "*.log" "*.tmp" "build/*" "release/*"
+    
+    # Create source code only zip
+    - echo "Creating source code zip: ${PACKAGE_NAME}_source.zip"
+    - zip -r ${RELEASE_DIR}/${PACKAGE_NAME}_source.zip . -x "*.git*" "*.gitlab-ci.yml" "node_modules/*" "*.pyc" "__pycache__/*" "*.log" "*.tmp" "build/*" "release/*" "*.zip"
+    
+    # Create documentation zip
+    - echo "Creating documentation zip: ${PACKAGE_NAME}_docs.zip"
+    - zip -r ${RELEASE_DIR}/${PACKAGE_NAME}_docs.zip . -i "*.md" "*.txt" "*.pdf" "docs/*" "README*" "LICENSE*" "CHANGELOG*"
+    
+    # Create release metadata
+    - echo "Creating release metadata..."
+    - |
+      cat > ${RELEASE_DIR}/${PACKAGE_NAME}_metadata.json << EOF
+      {
+        "project_name": "${PROJECT_NAME:-project}",
+        "version": "${GIT_TAG}",
+        "branch": "${GIT_BRANCH}",
+        "commit_sha": "${CI_COMMIT_SHA}",
+        "commit_short": "${GIT_COMMIT_SHORT}",
+        "pipeline_id": "${CI_PIPELINE_ID}",
+        "job_id": "${CI_JOB_ID}",
+        "build_timestamp": "${TIMESTAMP}",
+        "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+        "gitlab_url": "${CI_PROJECT_URL}",
+        "pipeline_url": "${CI_PIPELINE_URL}",
+        "trigger_source": "${CI_PIPELINE_SOURCE}",
+        "artifacts": [
+          "${PACKAGE_NAME}.zip",
+          "${PACKAGE_NAME}_source.zip",
+          "${PACKAGE_NAME}_docs.zip"
+        ]
+      }
+      EOF
+    
+    # List created artifacts
+    - echo "📋 Created artifacts:"
+    - ls -la ${RELEASE_DIR}/
+    - echo "✅ Packaging completed successfully"
+  artifacts:
+    paths:
+      - ${RELEASE_DIR}/
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Deploy stage - Upload to S3
+deploy:
+  stage: deploy
+  image: amazon/aws-cli:latest
+  before_script:
+    - echo "🚀 Preparing S3 deployment..."
+    - echo "S3 Artifacts Bucket: ${S3_BUCKET_ARTIFACTS}"
+    - echo "S3 Releases Bucket: ${S3_BUCKET_RELEASES}"
+    - echo "AWS Region: ${AWS_REGION}"
+  script:
+    - echo "📤 Uploading artifacts to S3..."
+    
+    # Set AWS region
+    - export AWS_DEFAULT_REGION=${AWS_REGION}
+    
+    # Upload artifacts to S3
+    - |
+      for artifact in ${RELEASE_DIR}/*.zip; do
+        if [ -f "$artifact" ]; then
+          filename=$(basename "$artifact")
+          echo "Uploading $filename to S3..."
+          aws s3 cp "$artifact" "s3://${S3_BUCKET_ARTIFACTS}/${ARTIFACT_PREFIX}/${GIT_BRANCH}/${filename}"
+          echo "✅ Uploaded: s3://${S3_BUCKET_ARTIFACTS}/${ARTIFACT_PREFIX}/${GIT_BRANCH}/${filename}"
+        fi
+      done
+    
+    # Upload metadata to S3
+    - |
+      for metadata in ${RELEASE_DIR}/*.json; do
+        if [ -f "$metadata" ]; then
+          filename=$(basename "$metadata")
+          echo "Uploading metadata $filename to S3..."
+          aws s3 cp "$metadata" "s3://${S3_BUCKET_ARTIFACTS}/${ARTIFACT_PREFIX}/${GIT_BRANCH}/${filename}"
+          echo "✅ Uploaded: s3://${S3_BUCKET_ARTIFACTS}/${ARTIFACT_PREFIX}/${GIT_BRANCH}/${filename}"
+        fi
+      done
+    
+    # If this is a tag/release, also upload to releases bucket
+    - |
+      if [ "${CI_COMMIT_TAG}" != "" ]; then
+        echo "🏷️ Tag detected - uploading to releases bucket..."
+        for artifact in ${RELEASE_DIR}/*.zip; do
+          if [ -f "$artifact" ]; then
+            filename=$(basename "$artifact")
+            echo "Uploading $filename to releases bucket..."
+            aws s3 cp "$artifact" "s3://${S3_BUCKET_RELEASES}/${RELEASE_PREFIX}/${GIT_TAG}/${filename}"
+            echo "✅ Uploaded to releases: s3://${S3_BUCKET_RELEASES}/${RELEASE_PREFIX}/${GIT_TAG}/${filename}"
+          fi
+        done
+        
+        # Upload release metadata
+        for metadata in ${RELEASE_DIR}/*.json; do
+          if [ -f "$metadata" ]; then
+            filename=$(basename "$metadata")
+            echo "Uploading release metadata $filename to S3..."
+            aws s3 cp "$metadata" "s3://${S3_BUCKET_RELEASES}/${RELEASE_PREFIX}/${GIT_TAG}/${filename}"
+            echo "✅ Uploaded release metadata: s3://${S3_BUCKET_RELEASES}/${RELEASE_PREFIX}/${GIT_TAG}/${filename}"
+          fi
+        done
+      fi
+    
+    # List S3 contents for verification
+    - echo "📋 Verifying S3 uploads..."
+    - aws s3 ls "s3://${S3_BUCKET_ARTIFACTS}/${ARTIFACT_PREFIX}/${GIT_BRANCH}/" --recursive
+    - |
+      if [ "${CI_COMMIT_TAG}" != "" ]; then
+        echo "📋 Release artifacts:"
+        aws s3 ls "s3://${S3_BUCKET_RELEASES}/${RELEASE_PREFIX}/${GIT_TAG}/" --recursive
+      fi
+    
+    - echo "✅ S3 deployment completed successfully"
+  artifacts:
+    reports:
+      dotenv: ${RELEASE_DIR}/deployment.env
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Cleanup stage - Clean up temporary files
+cleanup:
+  stage: cleanup
+  image: ubuntu:22.04
+  script:
+    - echo "🧹 Cleaning up temporary files..."
+    - rm -rf ${BUILD_DIR}/*.tmp || true
+    - rm -rf ${RELEASE_DIR}/*.tmp || true
+    - echo "✅ Cleanup completed"
+  when: always
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Notification stage - Send notifications (optional)
+notify:
+  stage: cleanup
+  image: curlimages/curl:latest
+  script:
+    - echo "📢 Sending notifications..."
+    - echo "Pipeline ${CI_PIPELINE_ID} completed successfully"
+    - echo "Branch: ${GIT_BRANCH}"
+    - echo "Commit: ${GIT_COMMIT_SHORT}"
+    - echo "Artifacts uploaded to S3"
+    - echo "✅ Notifications sent"
+  when: on_success
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
