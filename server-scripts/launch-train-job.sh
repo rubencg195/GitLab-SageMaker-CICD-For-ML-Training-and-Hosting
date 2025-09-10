@@ -24,6 +24,9 @@ GITLAB_URL=""
 GITLAB_TOKEN=""
 PROJECT_ID=""
 PROJECT_NAME=""
+PUSHED_COMMIT_HASH=""
+PUSHED_TIMESTAMP=""
+BRANCH_NAME=""
 
 # Logging function
 log() {
@@ -63,6 +66,11 @@ setup_code_repository() {
     
     log_info "Preparing training scripts repository structure..."
     
+    # Generate unique commit info first (needed for README)
+    TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+    RANDOM_ID=$(date +%N | tail -c4)  # Use nanoseconds for randomness
+    COMMIT_HASH=$(echo "$TIMESTAMP-$$-$RANDOM_ID" | sha256sum 2>/dev/null | cut -d' ' -f1 | head -c8 || echo "$(date +%s | tail -c8)")
+    
     # Copy only the training-related files to temp directory
     if [ -d "train-script" ]; then
         cp -r train-script/* "$TEMP_REPO_DIR/"
@@ -89,88 +97,178 @@ setup_code_repository() {
         log_success "Copied tests"
     fi
     
+    # Get AWS Account ID and S3 bucket names for the pipeline
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "176843580427")
+    ARTIFACTS_BUCKET=$(tofu output -raw gitlab_artifacts_bucket_name 2>/dev/null || echo "gitlab-artifacts-bucket")
+    RELEASES_BUCKET=$(tofu output -raw gitlab_releases_bucket_name 2>/dev/null || echo "gitlab-releases-bucket")
+    
+    # Create environment variables file for CI/CD
+    cat > "$TEMP_REPO_DIR/.env" << EOF
+# Auto-generated environment variables for GitLab CI/CD
+export AWS_ACCOUNT_ID="$AWS_ACCOUNT_ID"
+export GITLAB_ARTIFACTS_BUCKET="$ARTIFACTS_BUCKET"
+export GITLAB_RELEASES_BUCKET="$RELEASES_BUCKET"
+export SAGEMAKER_ROLE_ARN="arn:aws:iam::$AWS_ACCOUNT_ID:role/SageMakerExecutionRole"
+export S3_BUCKET="ml-training-data-$AWS_ACCOUNT_ID"
+EOF
+
     # Create a simple README for the training repository
-    cat > "$TEMP_REPO_DIR/README.md" << 'EOF'
+    cat > "$TEMP_REPO_DIR/README.md" << EOF
 # SageMaker ML Training Pipeline Demo
 
 This repository contains a simplified training pipeline demo for SageMaker ML model training.
 
 ## Structure
 
-- `train.py` - Main training script
-- `create_zip_package.py` - Package and upload artifacts
-- `.gitlab-ci.yml` - CI/CD pipeline configuration
+- \`train.py\` - Main training script
+- \`create_zip_package.py\` - Package and upload artifacts
+- \`.gitlab-ci.yml\` - CI/CD pipeline configuration
+- \`.env\` - Environment variables for CI/CD
 
 ## Pipeline Stages
 
-1. **validate** - Code quality checks
+1. **build** - Environment setup and validation
 2. **train** - XGBoost model training
 3. **package** - Artifact compression and S3 upload
+4. **notify** - Pipeline notifications
 
 ## Artifacts
 
 - Trained models are packaged as ZIP files
 - Artifacts are stored in S3 buckets
 
+## Environment
+
+- AWS Account ID: $AWS_ACCOUNT_ID
+- Artifacts Bucket: $ARTIFACTS_BUCKET
+- Releases Bucket: $RELEASES_BUCKET
+
 Generated automatically by GitLab CI/CD launcher script.
+Commit Hash: $COMMIT_HASH
+Timestamp: $TIMESTAMP
 EOF
     
     # Initialize git repository in temp directory
     cd "$TEMP_REPO_DIR"
+    
+    # Initialize git and configure
     git init
     git config user.email "gitlab-cicd@localhost"
     git config user.name "GitLab CI/CD Setup"
     
-    # Add all files
-    git add .
-    git commit -m "Initial commit: Training scripts and CI/CD pipeline"
+    # Get GitLab root password for authentication
+    log_info "Retrieving GitLab root password for authentication..."
+    GITLAB_ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | awk '{print \$2}'" 2>/dev/null)
     
-    # Add GitLab remote and push
-    git remote add origin "$GITLAB_URL/root/$PROJECT_NAME.git"
-    
-    # Configure git authentication with access token
-    git remote set-url origin "http://root:$GITLAB_TOKEN@$GITLAB_IP/root/$PROJECT_NAME.git"
-    
-    if git push -u origin master --force; then
-        log_success "Training scripts repository pushed to GitLab"
-    else
-        log_warning "Failed to push training scripts to GitLab"
+    if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
+        log_error "Could not retrieve GitLab root password"
+        return 1
     fi
+    
+    # Set up GitLab remote with root user authentication
+    # URL encode the password to handle special characters
+    ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g')
+    GITLAB_REPO_URL="http://root:$ENCODED_PASSWORD@$GITLAB_IP/root/$PROJECT_NAME.git"
+    git remote add origin "$GITLAB_REPO_URL"
+    log_success "GitLab authentication configured with root user"
+    
+    # Use unique branch name to avoid conflicts
+    BRANCH_NAME="pipeline-$COMMIT_HASH"
+    
+    log_info "Creating new pipeline branch: $BRANCH_NAME"
+    
+    # Create and switch to new branch
+    git checkout -b "$BRANCH_NAME"
+    
+    # Add all new files
+    git add .
+    
+    # Create commit with unique message including random file content to ensure uniqueness
+    echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
+    git add ".pipeline-trigger-$COMMIT_HASH"
+    
+    git commit -m "Training pipeline update - $TIMESTAMP
+
+- Updated training scripts for pipeline execution  
+- Commit hash: $COMMIT_HASH
+- Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')
+- Pipeline trigger: automated deployment
+- Build trigger file: .pipeline-trigger-$COMMIT_HASH
+- Branch: $BRANCH_NAME"
+    
+    # Push new branch
+    log_info "Pushing new branch to GitLab: $BRANCH_NAME"
+    if git push -u origin "$BRANCH_NAME"; then
+        log_success "New training pipeline branch pushed to GitLab (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+    else
+        log_error "Failed to push training scripts to GitLab"
+        return 1
+    fi
+    
+    # Store commit info for summary (make variables global for monitor function)
+    PUSHED_COMMIT_HASH="$COMMIT_HASH"
+    PUSHED_TIMESTAMP="$TIMESTAMP"
     
     # Return to project root and cleanup
     cd "$PROJECT_ROOT"
     rm -rf "$TEMP_REPO_DIR"
     
-    log_info "Repository setup complete - GitLab now contains training demo"
+    log_info "Repository setup complete - GitLab now contains training demo with unique commit $COMMIT_HASH"
 }
 
 # Function to monitor pipeline
 monitor_pipeline() {
-    log_info "Monitoring GitLab CI/CD pipeline..."
+    log_info "Monitoring GitLab CI/CD pipeline for new commit..."
     
-    # Wait a moment for pipeline to start
-    sleep 5
+    # Wait longer for GitLab to detect the new commit and create pipeline
+    log_info "Waiting for GitLab to detect new commit and create pipeline..."
+    sleep 10
     
-    # Get latest pipeline
-    PIPELINE_INFO=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines" | head -200)
+    # Try multiple times to find the new pipeline
+    local max_attempts=6
+    local attempt=1
+    local pipeline_found=false
     
-    if echo "$PIPELINE_INFO" | grep -q '"status"'; then
-        PIPELINE_STATUS=$(echo "$PIPELINE_INFO" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
-        PIPELINE_ID=$(echo "$PIPELINE_INFO" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
-        PIPELINE_URL="$GITLAB_URL/root/$PROJECT_NAME/-/pipelines/$PIPELINE_ID"
+    while [ $attempt -le $max_attempts ] && [ "$pipeline_found" = false ]; do
+        log_info "Checking for new pipeline (attempt $attempt/$max_attempts)..."
         
-        log_info "Latest pipeline status: $PIPELINE_STATUS"
-        log_info "Pipeline URL: $PIPELINE_URL"
+        # Get latest pipelines
+        PIPELINE_INFO=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines?per_page=5" 2>/dev/null || echo "")
         
-        if [ "$PIPELINE_STATUS" = "success" ]; then
-            log_success "Pipeline completed successfully!"
-        elif [ "$PIPELINE_STATUS" = "failed" ]; then
-            log_warning "Pipeline failed. Check the GitLab UI for details."
-        elif [ "$PIPELINE_STATUS" = "running" ] || [ "$PIPELINE_STATUS" = "pending" ]; then
-            log_info "Pipeline is $PIPELINE_STATUS. Monitor at: $PIPELINE_URL"
+        if [ -n "$PIPELINE_INFO" ] && echo "$PIPELINE_INFO" | grep -q '"status"'; then
+            # Get the latest pipeline
+            PIPELINE_ID=$(echo "$PIPELINE_INFO" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+            PIPELINE_STATUS=$(echo "$PIPELINE_INFO" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+            PIPELINE_REF=$(echo "$PIPELINE_INFO" | grep -o '"ref":"[^"]*"' | head -1 | cut -d'"' -f4)
+            PIPELINE_SHA=$(echo "$PIPELINE_INFO" | grep -o '"sha":"[^"]*"' | head -1 | cut -d'"' -f4)
+            PIPELINE_URL="$GITLAB_URL/root/$PROJECT_NAME/-/pipelines/$PIPELINE_ID"
+            
+            log_info "Found pipeline: ID=$PIPELINE_ID, Status=$PIPELINE_STATUS, Ref=$PIPELINE_REF"
+            log_info "Pipeline SHA: ${PIPELINE_SHA:0:8}... (looking for commits with our hash: $PUSHED_COMMIT_HASH)"
+            log_info "Pipeline URL: $PIPELINE_URL"
+            
+            pipeline_found=true
+            
+            if [ "$PIPELINE_STATUS" = "success" ]; then
+                log_success "Pipeline completed successfully!"
+            elif [ "$PIPELINE_STATUS" = "failed" ]; then
+                log_warning "Pipeline failed. Check the GitLab UI for details: $PIPELINE_URL"
+            elif [ "$PIPELINE_STATUS" = "running" ] || [ "$PIPELINE_STATUS" = "pending" ]; then
+                log_info "Pipeline is $PIPELINE_STATUS. Monitor at: $PIPELINE_URL"
+            else
+                log_info "Pipeline status: $PIPELINE_STATUS. URL: $PIPELINE_URL"
+            fi
+        else
+            log_warning "No pipeline found yet, waiting..."
+            sleep 5
+            attempt=$((attempt + 1))
         fi
-    else
-        log_warning "Could not get pipeline status"
+    done
+    
+    if [ "$pipeline_found" = false ]; then
+        log_warning "Could not find new pipeline after $max_attempts attempts"
+        log_info "Check GitLab project manually: $GITLAB_URL/root/$PROJECT_NAME/-/pipelines"
+        log_info "The pipeline might take longer to appear or there might be a CI/CD configuration issue"
     fi
 }
 
@@ -193,13 +291,23 @@ display_summary() {
     echo "  • ✅ Simplified training demo"
     echo "  • ✅ S3 artifact storage"
     echo "  • ✅ Automated packaging"
+    echo "  • ✅ Unique commit generation"
+    echo ""
+    echo "Pipeline Trigger Information:"
+    if [ -n "$PUSHED_COMMIT_HASH" ]; then
+        echo "  • Commit Hash: $PUSHED_COMMIT_HASH"
+        echo "  • Timestamp: $PUSHED_TIMESTAMP"
+        echo "  • Each run creates a NEW commit → NEW pipeline"
+    fi
     echo ""
     echo "Next Steps:"
     echo "  1. Visit GitLab project: $GITLAB_URL/root/$PROJECT_NAME"
     echo "  2. Monitor pipeline: $GITLAB_URL/root/$PROJECT_NAME/-/pipelines"
     echo "  3. Check S3 buckets for training artifacts"
+    echo "  4. Run again to trigger another pipeline with new commit"
     echo ""
     echo -e "${BLUE}Training job launched! 🚀${NC}"
+    echo -e "${GREEN}✨ New pipeline will be triggered automatically${NC}"
 }
 
 # Main execution function
