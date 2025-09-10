@@ -211,7 +211,8 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 │   ├── remove-gitlab-cicd.sh          # Complete cleanup script
 │   ├── gitlab-install.sh              # GitLab installation script
 │   ├── check_gitlab_health.sh         # Health check script (recommended)
-│   └── check_gitlab_health.py         # Health check script (legacy)
+│   ├── check_gitlab_health.py         # Health check script (legacy)
+│   └── check-train-pipeline.sh        # Comprehensive training pipeline checker
 ├── train-script/                      # Training job scripts
 │   ├── train.py                       # SageMaker training script
 │   ├── create_zip_package.py          # Artifact packaging script
@@ -305,6 +306,12 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 # Check GitLab health
 ./server-scripts/check_gitlab_health.sh --verbose
 
+# Check training pipeline health (comprehensive)
+./server-scripts/check-train-pipeline.sh --verbose
+
+# Quick pipeline status check
+./server-scripts/check-train-pipeline.sh --quick
+
 # Get GitLab connection details
 tofu output gitlab_setup_instructions
 
@@ -317,6 +324,208 @@ aws s3 ls s3://$(tofu output -raw gitlab_artifacts_bucket_name)
 
 # SSH to GitLab server
 tofu output gitlab_ssh_connection_command | bash
+```
+
+## 🔍 Pipeline Monitoring & Health Checks
+
+### Training Pipeline Checker
+
+The project includes advanced pipeline monitoring tools to ensure your training pipeline is working correctly:
+
+#### Quick Health Check
+```bash
+# Fast pipeline status check
+./server-scripts/check-train-pipeline.sh --quick
+```
+
+#### Comprehensive Health Check
+```bash
+# Full pipeline health analysis
+./server-scripts/check-train-pipeline.sh --verbose
+
+# Check specific components
+./server-scripts/check-train-pipeline.sh --no-s3 --no-sagemaker
+```
+
+### What Gets Checked
+
+#### 1. Prerequisites
+- OpenTofu availability
+- AWS CLI configuration
+- Required tools (curl, jq, SSH)
+- SSH key availability
+
+#### 2. GitLab Infrastructure
+- **Server Accessibility**: HTTP and SSH connectivity
+- **Access Token**: Creation and validation
+- **Project Information**: Project existence and details
+- **Runners**: Status, health, and registration
+- **CI/CD Variables**: Required variables validation
+
+#### 3. Pipeline Status
+- **Latest Pipeline**: Status, URL, creation time
+- **Pipeline Jobs**: Individual job status and details
+- **Pipeline History**: Recent pipeline executions
+
+#### 4. S3 Storage
+- **Artifacts Bucket**: Accessibility and content
+- **Releases Bucket**: Accessibility and content
+- **Object Counts**: Storage usage statistics
+
+#### 5. SageMaker Resources
+- **Execution Role**: IAM role existence and permissions
+- **Training Jobs**: Recent job history and status
+- **Model Packages**: Package registry status
+
+#### 6. Project Repository
+- **Key Files**: Essential files presence (.gitlab-ci.yml, train.py, etc.)
+- **Repository Structure**: Project organization validation
+
+### Health Status Levels
+
+1. **🟢 HEALTHY**: All checks passed
+   - Pipeline is fully operational
+   - All components working correctly
+   - Ready for ML training workflows
+
+2. **🟡 WARNING**: Some issues detected
+   - Pipeline mostly functional
+   - Minor issues that don't prevent operation
+   - May need attention soon
+
+3. **🔴 UNHEALTHY**: Significant issues
+   - Pipeline has major problems
+   - Components not working correctly
+   - Requires immediate attention
+
+### Report Contents
+
+- **Overall Status**: Health level and summary
+- **Check Summary**: Pass/fail statistics
+- **GitLab Details**: URLs and project information
+- **S3 Buckets**: Storage information
+- **Next Steps**: Recommended actions
+
+### Logging
+
+- **Log File**: `.out/cicd_pipeline_check_YYYYMMDD_HHMMSS.log`
+- **Verbose Mode**: Detailed debug information
+- **Timestamped**: All operations logged with timestamps
+
+### Monitoring Workflow
+
+#### After Infrastructure Deployment
+```bash
+# 1. Deploy infrastructure
+tofu apply -auto-approve
+
+# 2. Configure CI/CD
+./server-scripts/configure-gitlab-cicd
+
+# 3. Launch training job
+./server-scripts/launch-train-job.sh [ARGS]
+
+# 4. Check pipeline health
+./server-scripts/check-train-pipeline.sh --verbose
+```
+
+#### Regular Monitoring
+```bash
+# Quick daily check
+./server-scripts/check-train-pipeline.sh --quick
+
+# Detailed weekly check
+./server-scripts/check-train-pipeline.sh --verbose
+```
+
+#### Troubleshooting
+```bash
+# Check specific components
+./server-scripts/check-train-pipeline.sh --no-s3 --verbose
+./server-scripts/check-train-pipeline.sh --no-sagemaker --verbose
+
+# Check with specific settings
+./server-scripts/check-train-pipeline.sh --gitlab-ip 1.2.3.4 --project-id 123 --verbose
+```
+
+### Troubleshooting Common Issues
+
+#### 1. GitLab Not Accessible
+**Symptoms**: HTTP/SSH connectivity failures
+**Solutions**:
+- Wait for GitLab to fully initialize (5-10 minutes)
+- Check security group settings
+- Verify OpenTofu outputs
+
+#### 2. No Pipelines Found
+**Symptoms**: No pipeline history
+**Solutions**:
+- Ensure training job was launched successfully
+- Check project repository has been pushed
+- Verify GitLab runner is registered
+
+#### 3. S3 Bucket Issues
+**Symptoms**: Bucket not accessible or empty
+**Solutions**:
+- Check AWS credentials and permissions
+- Verify bucket names in OpenTofu outputs
+- Ensure IAM roles have S3 access
+
+#### 4. GitLab Runner Problems
+**Symptoms**: Runners not running or registered
+**Solutions**:
+- Re-run configure script
+- Check runner installation
+- Verify runner registration
+
+#### 5. Missing CI/CD Variables
+**Symptoms**: Required variables not found
+**Solutions**:
+- Re-run configure script
+- Check variable names and values
+- Verify project permissions
+
+### Performance and Reliability
+
+#### Optimizations
+- **Parallel Checks**: Multiple checks run concurrently where possible
+- **Timeout Handling**: Reasonable timeouts prevent hanging
+- **Error Recovery**: Graceful handling of individual check failures
+- **Caching**: Reuse of GitLab tokens and connection info
+
+#### Reliability Features
+- **Comprehensive Logging**: All operations logged for debugging
+- **Error Handling**: Graceful degradation on failures
+- **Status Codes**: Proper exit codes for automation
+- **Validation**: Input validation and prerequisite checks
+
+### Getting Help
+
+```bash
+# Show usage information
+./server-scripts/check-train-pipeline.sh --help
+
+# Run with verbose output for debugging
+./server-scripts/check-train-pipeline.sh --verbose
+
+# Check specific components
+./server-scripts/check-train-pipeline.sh --no-s3 --no-sagemaker --verbose
+```
+
+### Common Commands
+
+```bash
+# Full health check
+./server-scripts/check-train-pipeline.sh --verbose
+
+# Quick status check
+./server-scripts/check-train-pipeline.sh --quick
+
+# Check only GitLab components
+./server-scripts/check-train-pipeline.sh --no-s3 --no-sagemaker
+
+# Check with specific project
+./server-scripts/check-train-pipeline.sh --project-id 123 --verbose
 ```
 
 ## 🧹 Cleanup Options
