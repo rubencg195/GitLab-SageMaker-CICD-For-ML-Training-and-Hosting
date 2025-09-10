@@ -1,16 +1,31 @@
-# GitLab Server on AWS with OpenTofu
+# SageMaker Training Job CI/CD with GitLab on AWS
 
-This project deploys a complete GitLab CE (Community Edition) server on AWS using OpenTofu/Terraform. The deployment is optimized for fast setup and includes comprehensive monitoring and health checking capabilities.
+This project deploys a complete **SageMaker ML Training Pipeline** with **GitLab CI/CD** on AWS using OpenTofu/Terraform. The solution provides automated machine learning training workflows with comprehensive CI/CD pipeline management, artifact storage, and monitoring capabilities.
 
 ## 🎯 Project Overview
 
 This solution provides:
 - **Complete GitLab CE Server Infrastructure** deployed on AWS
-- **Optimized Performance** with fast deployment (~5-8 minutes)
-- **Modular Infrastructure Architecture** organized into 6 focused components
-- **Public GitLab Access** with secure configuration
+- **SageMaker Training Job CI/CD Pipeline** with automated workflows
+- **Modular Script Architecture** for different training job types
+- **S3 Artifact Management** with automated packaging and storage
 - **Production-ready Architecture** with monitoring, security, and cost optimization
-- **Automated Health Checking** and setup verification
+- **Three-Script Workflow**: Destroy → Setup → Launch architecture
+
+## 🏗️ Architecture Overview
+
+### Three-Script Modular Architecture
+
+The project uses a modular three-script architecture designed for flexibility and reusability:
+
+1. **Infrastructure Setup** (`configure-gitlab-cicd`) - Sets up GitLab infrastructure, runners, and CI/CD variables
+2. **Training Job Launcher** (`launch-train-job.sh`) - Deploys training repository and triggers pipelines
+3. **Complete Cleanup** (`remove-gitlab-cicd.sh`) - Destroys all GitLab configurations and returns to fresh state
+
+This architecture allows for:
+- **Multiple Training Job Types**: Easy addition of different launcher scripts for various ML frameworks
+- **Clean Separation**: Infrastructure vs. deployment concerns
+- **Reproducible Workflows**: Consistent destroy → setup → launch cycles
 
 ## 📸 Screenshots
 
@@ -24,579 +39,424 @@ The GitLab login interface after successful deployment. Use the root credentials
 
 The GitLab administration interface where you can manage users, projects, and system settings after logging in as the root user.
 
-## 📋 Get Your Deployment Info
+### Training Job Repository
+![Training Job Repository](images/training-job-repo.png)
 
-**After deployment, get your GitLab details:**
-```bash
-# Get all GitLab connection details
-tofu output gitlab_setup_instructions
+The deployed training job repository with simplified training scripts and CI/CD configuration.
 
-# Get individual values
-tofu output gitlab_public_ip            # Your GitLab server IP
-tofu output gitlab_http_url             # Your GitLab web URL  
-tofu output gitlab_root_username        # Root username (always 'root')
-tofu output gitlab_root_password        # Command to get root password
-tofu output gitlab_ssh_connection_command  # SSH command to server
-```
+### Training Job Pipeline
+![Training Job Pipeline](images/training-job-pipeline-list.png)
 
-## ✅ Current Status
+The GitLab CI/CD pipeline showing automated training job execution with artifact management.
 
-**GitLab Server is LIVE and Ready!**
-- **Public IP**: Get current IP with `tofu output gitlab_public_ip`
-- **Status**: **FULLY OPERATIONAL** with all services running (9/9) ✅
-- **Deployment**: **OPTIMIZED** deployment (~5-8 minutes) with **configuration issues resolved**
-- **Authentication**: Root user access only (reliable and secure)
-- **Security**: Configured with proper security headers and access controls
-- **Configuration**: All deprecated configs removed, GitLab 18.x compatible
+### Git Push Process
+![Git Push](images/git-push.png)
 
-## 🚀 Performance Optimizations Applied
+The automated Git push process showing training scripts deployment to GitLab.
 
-**Deployment Time: 20+ minutes → ~5-8 minutes** (60-75% faster!)
+## 🚀 Quick Start Guide
 
-### Major Speed Improvements:
-- **⚡ Skip system upgrades**: Only essential package updates (~2-3 min saved)
-- **🔧 Single GitLab reconfigure**: Combined all settings in one step (~2-3 min saved)  
-- **📊 Disabled monitoring services**: Prometheus, Alertmanager, exporters (~3-5 min saved)
-- **💾 Optimized database settings**: PostgreSQL tuned for faster startup (~1-2 min saved)
-- **👤 Simplified authentication**: Root user only, no complex user creation (~2-5 min saved)
-- **⏱️ Reduced timeouts/polling**: Shorter wait intervals (~2-4 min saved)
-
-### Technical Optimizations:
-- **Memory Usage**: Reduced GitLab memory footprint for faster initialization
-- **Database**: Tuned PostgreSQL for faster startup and reduced connections
-- **Service Dependencies**: Streamlined service startup order
-- **Installation Script**: Optimized package installation and configuration sequence
-- **Configuration Compatibility**: Removed deprecated GitLab 18.x incompatible settings (grafana, git_data_dirs)
-
-## 🏗️ Architecture
-
-### Infrastructure Components
-- **VPC**: Multi-AZ VPC with public and private subnets
-- **GitLab Server**: EC2 instance (t3.large) with Ubuntu 22.04 LTS (Public subnet)
-- **Data Storage**: EBS volume (100GB) for GitLab data persistence
-- **Network**: Internet Gateway, Elastic IP, security groups, Route53 hosted zone
-- **Monitoring**: CloudWatch logging and metrics
-- **Security**: IAM roles, policies, encrypted storage, KMS encryption
-
-### Security Architecture
-- **GitLab Server**: Deployed in public subnet with secure configuration
-- **Network Security**: Security groups restrict access to necessary ports only
-- **Access Control**: SSH key-based authentication and secure HTTP/HTTPS access
-- **Encryption**: All data encrypted at rest and in transit using AWS KMS
-
-## 📋 Prerequisites
+### Prerequisites
 
 1. **AWS CLI configured** with appropriate credentials
 2. **OpenTofu installed** (latest version recommended)
 3. **SSH key pair** available at `~/.ssh/id_rsa.pub`
 4. **AWS permissions** to create VPC, EC2, EBS, Route53, IAM resources
 
-## 🚀 Complete Deployment Guide
+### Step 1: Deploy Infrastructure
 
-### Step 1: Infrastructure Deployment
-
-1. **Clone and navigate to the project directory:**
-   ```bash
-   cd GitLab-SageMaker-CICD-For-ML-Training-and-Hosting
-   ```
-
-2. **Initialize OpenTofu:**
-   ```bash
-   tofu init
-   ```
-
-3. **Review the configuration in `locals.tf`** and modify if needed:
-   - AWS region (default: us-east-1)
-   - Instance type (default: t3.large)
-   - Volume size (default: 100GB)
-   - VPC CIDR blocks
-   - Project name and tags
-
-4. **Plan the deployment:**
-   ```bash
-   tofu plan
-   ```
-
-5. **Deploy the infrastructure:**
-   ```bash
-   tofu apply -auto-approve
-   ```
-
-6. **Wait for deployment to complete** (~5-8 minutes with optimizations!)
-
-### Step 2: GitLab Access (Fully Automated)
-
-7. **Access GitLab directly:**
-   - **Public IP**: Check outputs after deployment
-   - **HTTP URL**: http://[PUBLIC_IP]
-   - **HTTPS URL**: https://[PUBLIC_IP] (after SSL configuration)
-
-8. **Login to GitLab (Root Access):**
-   - **Root Username**: `root`
-   - **Root Password**: Run command from `tofu output gitlab_root_password`
-   - **URL**: Get with `tofu output gitlab_http_url`
-
-9. **Verify Deployment:**
-   ```bash
-   # Check if GitLab is ready (should return 302 redirect)
-   GITLAB_URL=$(tofu output -raw gitlab_http_url)
-   curl -I $GITLAB_URL
-   
-   # Get root credentials
-   tofu output gitlab_root_password
-   
-   # Verify GitLab services
-   SSH_CMD=$(tofu output -raw gitlab_ssh_connection_command)
-   $SSH_CMD "sudo gitlab-ctl status"
-   ```
-
-**Note**: The deployment is **optimized and streamlined**. GitLab will be configured and started in ~5-8 minutes with root access ready. No custom user creation means no authentication issues.
-
-## 🔐 GitLab Access Guide
-
-### Accessing GitLab
-
-GitLab is accessible directly from the internet with secure configuration:
-
-#### Web Access
 ```bash
-# Get your URLs
-GITLAB_HTTP=$(tofu output -raw gitlab_http_url)
-GITLAB_HTTPS=$(tofu output -raw gitlab_https_url)
+# Clone and navigate to project directory
+cd GitLab-SageMaker-CICD-For-ML-Training-and-Hosting
 
-# Open in browser
-echo "HTTP URL: $GITLAB_HTTP"
-echo "HTTPS URL: $GITLAB_HTTPS"
+# Initialize OpenTofu
+tofu init
+
+# Deploy the infrastructure (5-8 minutes)
+tofu apply -auto-approve
 ```
 
-#### SSH Access
+### Step 2: Complete Workflow - Destroy → Setup → Launch
+
+#### 2.1 Clean Setup (Destroy)
 ```bash
-# Get SSH commands
-SSH_CMD=$(tofu output -raw gitlab_ssh_connection_command)
-SSH_URL=$(tofu output -raw gitlab_ssh_url)
-
-# Server SSH
-$SSH_CMD
-
-# Git SSH URL for repositories
-echo "Git SSH URL: $SSH_URL"
+# Reset GitLab to fresh state (optional for new deployments)
+echo "yes" | ./server-scripts/remove-gitlab-cicd.sh
 ```
 
-#### GitLab Authentication (Root User)
+#### 2.2 Configure CI/CD Infrastructure
 ```bash
-# Get your credentials (Root only - guaranteed to work)
-GITLAB_ROOT_USER=$(tofu output -raw gitlab_root_username)
-GITLAB_ROOT_PASS=$(tofu output -raw gitlab_root_password)
-SSH_CMD=$(tofu output -raw gitlab_ssh_connection_command)
-
-echo "Root Username: $GITLAB_ROOT_USER"
-echo "Root Password Command: $GITLAB_ROOT_PASS"
-
-# Alternative: Get root password directly from server
-$SSH_CMD "sudo cat /etc/gitlab/initial_root_password | grep 'Password:'"
+# Set up GitLab project, runners, and CI/CD variables
+./server-scripts/configure-gitlab-cicd
 ```
 
-#### Root Password Retrieval Options
+#### 2.3 Launch Training Job
 ```bash
-# Option 1: Use OpenTofu output (recommended)
-tofu output gitlab_root_password
-
-# Option 2: SSH to server and get directly  
-SSH_CMD=$(tofu output -raw gitlab_ssh_connection_command)
-$SSH_CMD "sudo cat /etc/gitlab/initial_root_password"
-
-# Option 3: Check stored credentials on server
-$SSH_CMD "sudo cat /root/gitlab-root-credentials.txt"
+# Deploy training repository and trigger pipeline
+# Use the command provided by the configure script output
+./server-scripts/launch-train-job.sh [GITLAB_IP] [GITLAB_URL] [TOKEN] [PROJECT_ID] [PROJECT_NAME]
 ```
 
-### Security Features
-- **Authentication Required**: All access requires username/password
-- **User Signup Disabled**: Prevents unauthorized account creation
-- **Public Projects Disabled**: All projects are private by default
-- **Session Management**: 8-hour session timeout
-- **HTTPS Redirect**: Automatic redirect to secure connection
-- **Security Headers**: XSS protection, frame options, content type protection
+**Example Complete Workflow:**
+```bash
+# Complete cycle
+echo "yes" | ./server-scripts/remove-gitlab-cicd.sh  # Clean slate
+./server-scripts/configure-gitlab-cicd                # Setup infrastructure  
+./server-scripts/launch-train-job.sh 34.228.48.181 http://34.228.48.181 [TOKEN] 6 training-job-cicd-demo
+```
+
+## 🔧 Script Architecture Details
+
+### 1. Infrastructure Setup (`configure-gitlab-cicd`)
+
+**Purpose**: Sets up the GitLab CI/CD infrastructure without deploying training code.
+
+**Actions Performed:**
+- ✅ Creates GitLab project (`training-job-cicd-demo`)
+- ✅ Registers GitLab runners
+- ✅ Configures CI/CD variables (AWS credentials, S3 buckets, SageMaker roles)
+- ✅ Sets up IAM roles and permissions
+- ✅ Verifies S3 bucket access
+
+**Output**: Provides launcher command for next step.
+
+### 2. Training Job Launcher (`launch-train-job.sh`)
+
+**Purpose**: Deploys training repository and manages CI/CD pipelines.
+
+**Actions Performed:**
+- ✅ Pushes training scripts to GitLab repository
+- ✅ Triggers CI/CD pipeline
+- ✅ Monitors pipeline execution
+- ✅ Provides access URLs and status
+
+**Training Scripts Included:**
+- `train.py` - Simplified SageMaker training demo
+- `create_zip_package.py` - Artifact packaging and S3 upload
+- `send_notification.py` - Pipeline notifications
+
+### 3. Complete Cleanup (`remove-gitlab-cicd.sh`)
+
+**Purpose**: Returns GitLab to fresh installation state for clean redeployment.
+
+**Actions Performed:**
+- ✅ Removes all projects and repositories
+- ✅ Unregisters GitLab runners
+- ✅ Cleans S3 buckets (artifacts and releases)
+- ✅ Removes personal access tokens
+- ✅ Clears CI/CD variables
+- ✅ Resets GitLab to fresh state
+
+## 📦 Training Pipeline Features
+
+### SageMaker Integration
+- **Training Jobs**: Automated ML model training with SageMaker
+- **Instance Management**: Configurable instance types and scaling
+- **Model Artifacts**: Automatic model packaging and storage
+- **Hyperparameter Tuning**: Support for hyperparameter optimization
+
+### CI/CD Pipeline Stages
+1. **Prepare**: Environment setup and dependency installation
+2. **Train**: Execute SageMaker training job
+3. **Package**: Create model artifacts and metadata
+4. **Deploy**: Upload artifacts to S3 buckets
+5. **Notify**: Send completion notifications
+
+### Artifact Management
+- **S3 Storage**: Organized artifact storage in dedicated buckets
+- **Versioning**: Automated versioning with commit SHA and timestamps
+- **Metadata**: Detailed build and training metadata tracking
+- **Multiple Formats**: Source code, documentation, and model artifacts
+
+## 🏗️ Infrastructure Components
+
+### Core Infrastructure
+- **VPC**: Multi-AZ VPC with public and private subnets
+- **GitLab Server**: EC2 instance (t3.large) with Ubuntu 22.04 LTS
+- **Data Storage**: EBS volumes (100GB) for GitLab data persistence
+- **S3 Buckets**: Separate buckets for artifacts and releases
+- **IAM Roles**: SageMaker execution roles and GitLab runner permissions
+
+### Security Architecture
+- **Network Security**: Security groups with least-privilege access
 - **Encryption**: All data encrypted at rest and in transit using AWS KMS
-- **Access Control**: Security groups restrict access to necessary ports only
+- **Access Control**: IAM roles and policies for secure resource access
+- **Authentication**: GitLab token-based authentication
 
-## ⚙️ Configuration
-
-### Infrastructure Configuration
-All configuration is centralized in `locals.tf`. Key settings include:
-
-- **Project Configuration**: Project name, environment
-- **AWS Configuration**: Region (us-east-1), availability zones
-- **VPC Configuration**: CIDR blocks for VPC and subnets
-- **GitLab Configuration**: Instance type (t3.large), volume size (100GB)
-- **Security**: Port configurations, tags
+### Monitoring & Observability
+- **CloudWatch**: Comprehensive logging and metrics
+- **Pipeline Monitoring**: GitLab pipeline status and execution logs
+- **S3 Metrics**: Artifact storage and access monitoring
+- **Health Checks**: Automated GitLab health verification
 
 ## 📁 Project Structure
 
 ```
 GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
-├── README.md                        # This comprehensive guide
-├── locals.tf                        # OpenTofu configuration values
-├── provider.tf                     # AWS provider configuration
-├── outputs.tf                      # OpenTofu outputs
-├── vpc.tf                          # VPC and networking infrastructure
-├── security.tf                     # Security groups and IAM resources
-├── compute.tf                      # EC2 instances and EBS volumes
-├── dns.tf                          # Route53 DNS resources
-├── monitoring.tf                   # CloudWatch monitoring resources
-├── provisioning.tf                 # GitLab setup and provisioning
-├── server-scripts/                 # Server automation scripts
-│   ├── gitlab-install.sh          # GitLab installation script
-│   ├── check_gitlab_health.sh     # Bash health check script (recommended)
-│   └── check_gitlab_health.py     # Python health check script (legacy)
-└── images/                         # Screenshots and documentation images
-    └── local-login-gitlab.png     # GitLab login screenshot
+├── README.md                           # This comprehensive guide
+├── .gitlab-ci.yml                     # GitLab CI/CD pipeline configuration
+├── locals.tf                          # OpenTofu configuration values
+├── provider.tf                        # AWS provider configuration
+├── outputs.tf                         # OpenTofu outputs
+├── vpc.tf                             # VPC and networking infrastructure
+├── security.tf                        # Security groups and IAM resources
+├── compute.tf                         # EC2 instances and EBS volumes
+├── s3.tf                              # S3 buckets for artifacts and releases
+├── dns.tf                             # Route53 DNS resources
+├── monitoring.tf                      # CloudWatch monitoring resources
+├── provisioning.tf                    # GitLab setup and provisioning
+├── server-scripts/                    # Server automation scripts
+│   ├── configure-gitlab-cicd          # Infrastructure setup script
+│   ├── launch-train-job.sh           # Training job launcher script
+│   ├── remove-gitlab-cicd.sh          # Complete cleanup script
+│   ├── gitlab-install.sh              # GitLab installation script
+│   ├── check_gitlab_health.sh         # Health check script (recommended)
+│   └── check_gitlab_health.py         # Health check script (legacy)
+├── train-script/                      # Training job scripts
+│   ├── train.py                       # SageMaker training script
+│   ├── create_zip_package.py          # Artifact packaging script
+│   └── send_notification.py           # Notification script
+├── images/                            # Screenshots and documentation
+│   ├── admin-page.png                 # GitLab admin interface
+│   ├── login.png                      # GitLab login page
+│   ├── training-job-repo.png          # Training repository view
+│   ├── training-job-pipeline-list.png # Pipeline execution view
+│   ├── git-push.png                   # Git push process
+│   └── github-credential-manager.png  # Credential management
+└── release/                           # Legacy CI/CD documentation
+    ├── README.md                      # Original CI/CD documentation
+    └── setup-gitlab-cicd.sh           # Legacy setup script
 ```
 
-### 🏗️ Modular Infrastructure Benefits
+## 🔐 Security & Compliance
 
-**Organized Architecture**: The infrastructure is broken down into logical, focused components:
-- **🔍 Easier Troubleshooting**: Issues can be isolated to specific resource types
-- **👥 Better Team Collaboration**: Multiple developers can work on different components 
-- **🔄 Simplified Maintenance**: Update only the relevant files for your changes
-- **📚 Improved Readability**: Each file has a clear, single responsibility
-- **⚡ Same Performance**: All optimizations preserved in the new structure
+### Access Control
+- **GitLab Authentication**: Token-based API access
+- **AWS IAM**: Least privilege access policies
+- **S3 Bucket Policies**: Restricted access to authorized roles only
+- **Network Security**: Security groups limit access to necessary ports
 
-## 🔧 Available Scripts
+### Data Protection
+- **Encryption at Rest**: All S3 buckets and EBS volumes encrypted with KMS
+- **Encryption in Transit**: HTTPS/TLS for all communications
+- **Access Logging**: Comprehensive audit trails
+- **Secret Management**: Secure handling of credentials and tokens
 
-### GitLab Health Check (Bash Version - Recommended)
-```bash
-# Automated health check with 12 retries (~10 minute monitoring window)
-./server-scripts/check_gitlab_health.sh
+### Compliance Features
+- **Audit Trails**: Complete logging of all activities
+- **Data Retention**: Configurable artifact retention policies
+- **Access Monitoring**: CloudWatch metrics for access patterns
+- **Security Headers**: XSS protection and security headers configured
 
-# With verbose output to see detailed progress
-./server-scripts/check_gitlab_health.sh --verbose
-
-# With specific IP (auto-detected if not provided)
-./server-scripts/check_gitlab_health.sh --gitlab-ip YOUR_IP
-
-# Custom retry settings
-./server-scripts/check_gitlab_health.sh --retries 15 --interval 40
-```
-
-**What it checks:**
-- ✅ Network connectivity to GitLab (HTTP/HTTPS)
-- ✅ SSH connectivity to server
-- ✅ GitLab services status (all 9 services)
-- ✅ Web interface accessibility (login page)
-- ✅ Root password retrieval
-- ✅ Comprehensive health reporting
-
-### Python Health Check (Legacy)
-```bash
-# Legacy Python health check (still available)
-python server-scripts/check_gitlab_health.py
-
-# With specific IP (auto-detected if not provided)
-python server-scripts/check_gitlab_health.py --gitlab-ip YOUR_IP
-```
-
-### Command Line Access
-```bash
-# Get GitLab access information
-tofu output gitlab_setup_instructions
-
-# Get root password command
-tofu output gitlab_root_password
-
-# SSH to GitLab server
-tofu output gitlab_ssh_connection_command | bash
-```
-
-## 📊 Monitoring and Observability
+## 📊 Monitoring & Observability
 
 ### GitLab Monitoring
-- **CloudWatch Logs**: `/aws/ec2/gitlab-server-gitlab`
-- **GitLab Status**: `sudo gitlab-ctl status`
-- **System Resources**: `htop` on the server
+- **Pipeline Status**: Real-time pipeline execution monitoring
+- **Job Logs**: Detailed execution logs for troubleshooting
+- **Runner Status**: GitLab runner health and availability
+- **Repository Metrics**: Git operations and repository statistics
 
-### Cost Monitoring
-- **AWS Cost Explorer**: Track resource usage
-- **Resource Tagging**: All resources properly tagged
+### AWS Monitoring
+- **CloudWatch Logs**: GitLab server and application logs
+- **EC2 Metrics**: Server performance and resource utilization
+- **S3 Metrics**: Storage usage and access patterns
+- **Cost Monitoring**: Resource usage and cost optimization
 
-## 🔄 Complete Deployment Cycle
-
-### Full Destroy/Reapply/Monitor Cycle
-
-This section shows how to perform a complete infrastructure refresh cycle with monitoring.
-
-#### Step 1: Destroy Current Infrastructure
-```bash
-# Destroy all resources
-tofu destroy -auto-approve
-```
-
-#### Step 2: Reapply Infrastructure
-```bash
-# Recreate all resources
-tofu apply -auto-approve
-```
-
-#### Step 3: Monitor with Health Check Script
-```bash
-# Monitor deployment with comprehensive health checks
-./server-scripts/check_gitlab_health.sh --verbose
-```
-
-### Example Health Check Output
-
-#### During Deployment (Pending State)
-```
-[2025-09-09 19:20:00] =========================================
-[2025-09-09 19:20:00] GitLab Health Check Script (Bash Version)
-[2025-09-09 19:20:00] Started: Tue, Sep  9, 2025  7:20:00 PM
-[2025-09-09 19:20:00] =========================================
-Auto-detecting GitLab IP from OpenTofu outputs...
-SUCCESS: GitLab IP detected: 34.228.48.181
-[2025-09-09 19:20:01] Configuration: 12 retries, 50s intervals (~10 minutes total)
-
-[2025-09-09 19:20:01] === HEALTH CHECK ATTEMPT 1/12 ===
-[2025-09-09 19:20:01] Checking GitLab at 34.228.48.181...
-INFO: Checking HTTP connectivity to http://34.228.48.181
-WARNING: HTTP not ready: 
-[2025-09-09 19:20:04] ❌ HTTP connectivity failed
-[2025-09-09 19:20:04] ⏳ Attempt 1 failed. Waiting 50s before retry...
-INFO: Waiting 50 seconds... (Attempt 1/12)
-
-[2025-09-09 19:20:54] === HEALTH CHECK ATTEMPT 2/12 ===
-[2025-09-09 19:20:55] Checking GitLab at 34.228.48.181...
-INFO: Checking HTTP connectivity to http://34.228.48.181
-WARNING: HTTP not ready: 
-[2025-09-09 19:20:57] ❌ HTTP connectivity failed
-[2025-09-09 19:20:57] ⏳ Attempt 2 failed. Waiting 50s before retry...
-INFO: Waiting 50 seconds... (Attempt 2/12)
-
-[2025-09-09 19:24:25] === HEALTH CHECK ATTEMPT 6/12 ===
-[2025-09-09 19:24:25] Checking GitLab at 34.228.48.181...
-INFO: Checking HTTP connectivity to http://34.228.48.181
-WARNING: HTTP not ready: HTTP/1.1 502 Bad Gateway
-[2025-09-09 19:24:25] ❌ HTTP connectivity failed
-[2025-09-09 19:24:25] ⏳ Attempt 6 failed. Waiting 50s before retry...
-INFO: Waiting 50 seconds... (Attempt 6/12)
-```
-
-#### When GitLab is Ready (Success State)
-```
-[2025-09-09 19:26:06] === HEALTH CHECK ATTEMPT 8/12 ===
-[2025-09-09 19:26:06] Checking GitLab at 34.228.48.181...
-INFO: Checking HTTP connectivity to http://34.228.48.181
-SUCCESS: HTTP connectivity: HTTP/1.1 302 Found
-INFO: Checking SSH connectivity to 34.228.48.181
-SUCCESS: SSH connectivity working
-INFO: Checking GitLab services status
-SUCCESS: GitLab services running
-INFO: Checking GitLab web interface
-SUCCESS: GitLab web interface accessible
-[2025-09-09 19:26:13] 🎉 ALL HEALTH CHECKS PASSED!
-[2025-09-09 19:26:13] ✅ GitLab is fully operational
-[2025-09-09 19:26:13] 🌐 URL: http://34.228.48.181
-[2025-09-09 19:26:13] 👤 Username: root
-[2025-09-09 19:26:13] 🔑 Password: GJUjzG5zcPJ4G7/LOugmQcka2cs0x6D3j3yeRLioJwA=
-SUCCESS: 🎉 GitLab is ready and fully operational!
-[2025-09-09 19:26:13] Health check completed successfully after 350 seconds
-```
-
-### Quick Cycle Commands
-```bash
-# One-liner for complete cycle
-tofu destroy -auto-approve && tofu apply -auto-approve && ./server-scripts/check_gitlab_health.sh --verbose
-
-# Or step by step
-echo "🔥 Destroying infrastructure..." && tofu destroy -auto-approve
-echo "🔄 Reapplying infrastructure..." && tofu apply -auto-approve  
-echo "📊 Monitoring deployment..." && ./server-scripts/check_gitlab_health.sh --verbose
-```
-
-## 🧹 Cleanup
-
-### Destroy Infrastructure
-```bash
-tofu destroy -auto-approve
-```
+### Training Job Monitoring
+- **SageMaker Metrics**: Training job performance and status
+- **Model Metrics**: Training accuracy and validation metrics
+- **Resource Usage**: Instance utilization and cost tracking
+- **Artifact Tracking**: Model version and artifact lineage
 
 ## 🚨 Troubleshooting
 
-### Common Issues and Solutions
+### Common Issues
 
 #### 1. GitLab Not Accessible
 **Symptoms**: Cannot access GitLab web interface
 **Solutions**:
 - Wait 5-10 minutes for GitLab to fully initialize
-- Check security group allows HTTP/HTTPS traffic (ports 80, 443)
-- Verify instance is running: `aws ec2 describe-instances --instance-ids [INSTANCE_ID]`
-- Check GitLab status: `ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl status"`
+- Run health check: `./server-scripts/check_gitlab_health.sh --verbose`
+- Check security group allows HTTP/HTTPS traffic
 
-**Debug Commands**:
+#### 2. Training Pipeline Failures
+**Symptoms**: CI/CD pipeline fails during training stage
+**Solutions**:
+- Check SageMaker IAM role permissions
+- Verify S3 bucket access and policies
+- Review training script logs in GitLab
+
+#### 3. S3 Access Issues
+**Symptoms**: Cannot upload artifacts to S3
+**Solutions**:
+- Verify IAM role has S3 permissions
+- Check bucket names in CI/CD variables
+- Test S3 access: `aws s3 ls s3://bucket-name`
+
+#### 4. Runner Registration Issues
+**Symptoms**: GitLab runner not appearing or failing jobs
+**Solutions**:
+- Check runner status: `ssh ubuntu@[IP] "sudo gitlab-runner status"`
+- Re-run configure script: `./server-scripts/configure-gitlab-cicd`
+- Verify runner token and registration
+
+### Debug Commands
 ```bash
-# Check if GitLab is responding
-curl -v http://[PUBLIC_IP]
-
-# Check GitLab service status
-ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo systemctl status gitlab-runsvdir"
-
-# Check GitLab configuration
-ssh -i ~/.ssh/id_rsa ubuntu@[PUBLIC_IP] "sudo gitlab-ctl show-config"
-```
-
-#### 2. SSH Connection Failed
-**Symptoms**: Cannot SSH to GitLab server
-**Solutions**:
-- Verify SSH key permissions: `chmod 600 ~/.ssh/id_rsa`
-- Check security group allows SSH traffic (port 22)
-- Ensure instance is running and accessible
-- Try: `ssh -i ~/.ssh/id_rsa -v ubuntu@[PUBLIC_IP]` for verbose output
-
-#### 3. Root Password Issues
-**Symptoms**: Cannot retrieve or use root password
-**Solutions**:
-- Wait for GitLab to fully initialize
-- Use the SSH command from `tofu output gitlab_root_password`
-- Check `/etc/gitlab/initial_root_password` directly on server
-- Verify GitLab services are running
-
-#### 4. GitLab Configuration Issues (RESOLVED)
-**Symptoms**: GitLab fails to reconfigure, services don't start properly
-**Root Cause**: Deprecated configurations in GitLab 18.x
-**✅ FIXED**: The following deprecated configurations have been removed:
-- ❌ `grafana['enable'] = false` (unsupported in GitLab 18.x)
-- ❌ `git_data_dirs` configuration (removed in GitLab 18.0)
-
-**Current Status**: All GitLab services start reliably with clean configuration.
-
-#### 5. OpenTofu Issues
-**Symptoms**: OpenTofu commands fail
-**Solutions**:
-- Run `tofu init` to initialize providers
-- Check AWS credentials: `aws sts get-caller-identity`
-- Verify region and resource availability
-- Check for syntax errors in configuration files
-
-### Automated Health Check
-```bash
-# Run comprehensive health check (Bash version - recommended)
+# Check GitLab health
 ./server-scripts/check_gitlab_health.sh --verbose
 
-# Expected output for healthy system:
-# 🎉 ALL HEALTH CHECKS PASSED!
-# ✅ GitLab is fully operational
-# 🌐 URL: http://YOUR_IP
-# 👤 Username: root
-# 🔑 Password: [retrieved automatically]
+# Get GitLab connection details
+tofu output gitlab_setup_instructions
 
-# Legacy Python version (still available)
-python server-scripts/check_gitlab_health.py
+# Check AWS connectivity
+aws sts get-caller-identity
 
-# Expected output for healthy system:
-# ✅ Overall Status: HEALTHY
-# 📊 Checks Passed: 6/6 (100.00%)
-# 🌐 GitLab URL: http://YOUR_IP
+# Test S3 access
+tofu output gitlab_artifacts_bucket_name
+aws s3 ls s3://$(tofu output -raw gitlab_artifacts_bucket_name)
+
+# SSH to GitLab server
+tofu output gitlab_ssh_connection_command | bash
 ```
 
-## 🔒 Security Considerations
+## 🧹 Cleanup Options
 
-### Immediate Actions
-- **Change Default Password**: Update GitLab root password immediately
-- **Configure SSL/TLS**: Set up certificates for HTTPS access
-- **Restrict SSH Access**: Limit SSH access to specific IP ranges
-- **Update System**: Regularly update GitLab and underlying OS
+### Partial Cleanup (Reset GitLab Only)
+```bash
+# Reset GitLab to fresh state (keeps infrastructure)
+echo "yes" | ./server-scripts/remove-gitlab-cicd.sh
+```
 
-### Long-term Security
-- **Regular Backups**: Implement automated backup strategies
-- **Access Monitoring**: Monitor and audit access logs
-- **Security Updates**: Keep all components updated
-- **Network Security**: Consider VPN or bastion host access
-- **IAM Policies**: Use least privilege access principles
+### Complete Cleanup (Destroy All Infrastructure)
+```bash
+# Destroy all AWS resources
+tofu destroy -auto-approve
+```
 
-## 💡 Key Features
+### Selective Cleanup
+```bash
+# Remove specific projects or runners through GitLab UI
+# Or use GitLab API calls for programmatic cleanup
+```
 
-### Performance Optimizations
-- **Fast Deployment**: 5-8 minutes from start to finish
-- **Optimized Configuration**: Database and service tuning
-- **Minimal Resource Usage**: Efficient resource allocation
-- **Quick Startup**: Streamlined service initialization
+## 💡 Advanced Usage
 
-### Security & Monitoring
-- **IAM Roles**: Least privilege access control
-- **Encryption**: Data encrypted in transit and at rest
-- **CloudWatch**: Comprehensive logging and metrics
-- **Health Checks**: Automated monitoring capabilities
-- **Audit Trail**: Complete activity logging
+### Multiple Training Job Types
 
-## ⚠️ Important Notes
+The modular architecture supports different training job types:
 
-- **SSH Key**: Ensure your SSH public key is available at `~/.ssh/id_rsa.pub`
-- **Initial Password**: The initial root password is generated and stored in `/etc/gitlab/initial_root_password` on the server
-- **Data Persistence**: GitLab data is stored on a separate EBS volume for persistence
-- **Security**: The security group allows SSH, HTTP, and HTTPS access from anywhere (0.0.0.0/0)
-- **Cost Management**: Monitor AWS costs and destroy resources when not needed
+```bash
+# Create different launcher scripts for different frameworks
+cp server-scripts/launch-train-job.sh server-scripts/launch-pytorch-job.sh
+cp server-scripts/launch-train-job.sh server-scripts/launch-tensorflow-job.sh
+
+# Customize training scripts per framework
+mkdir train-pytorch/
+mkdir train-tensorflow/
+```
+
+### Custom Training Scripts
+
+Modify training scripts in `train-script/` for your specific use case:
+
+```bash
+# Edit the main training script
+nano train-script/train.py
+
+# Customize artifact packaging
+nano train-script/create_zip_package.py
+
+# Update notifications
+nano train-script/send_notification.py
+```
+
+### Environment-Specific Deployments
+
+```bash
+# Use different configurations for dev/staging/prod
+cp locals.tf locals.dev.tf
+cp locals.tf locals.prod.tf
+
+# Deploy to different environments
+tofu workspace new dev
+tofu workspace new prod
+```
+
+## 📋 Access Information
+
+After successful deployment, get your access details:
+
+```bash
+# Get all GitLab connection details
+tofu output gitlab_setup_instructions
+
+# Individual values
+tofu output gitlab_public_ip               # Your GitLab server IP
+tofu output gitlab_http_url               # Your GitLab web URL
+tofu output gitlab_root_password          # Root password command
+tofu output gitlab_artifacts_bucket_name  # S3 artifacts bucket
+tofu output gitlab_releases_bucket_name   # S3 releases bucket
+```
+
+**Access URLs:**
+- **GitLab Web Interface**: Use `tofu output gitlab_http_url`
+- **Training Job Project**: `http://[IP]/root/training-job-cicd-demo`
+- **Pipeline Monitoring**: `http://[IP]/root/training-job-cicd-demo/-/pipelines`
+- **S3 Console**: Monitor artifacts in AWS S3 console
 
 ## 🎯 Next Steps
 
-**✅ Your GitLab server is ready to use immediately!**
+1. **Verify Deployment**: Run `./server-scripts/check_gitlab_health.sh --verbose`
+2. **Access GitLab**: Use output from `tofu output gitlab_http_url`
+3. **Run Training Pipeline**: Follow the three-script workflow
+4. **Monitor Results**: Check pipeline status and S3 artifacts
+5. **Customize Training**: Modify scripts for your ML use case
+6. **Scale Infrastructure**: Adjust instance types and resources as needed
 
-1. **Verify status** (optional): `./server-scripts/check_gitlab_health.sh --verbose`
-2. **Access GitLab**: Use the URL from `tofu output gitlab_http_url` 
-3. **Get root password**: Use the command from `tofu output gitlab_root_password`
-4. **Login with root credentials** and start using GitLab
-5. **Create your first project** in GitLab
-6. **Configure SSL/HTTPS** for production use
-7. **Set up backups** for data persistence
-8. **Create additional users** via Admin Area if needed
+## 🔄 Performance Features
 
-**Note**: All configuration issues have been resolved - your deployment should work smoothly!
+### Deployment Optimizations
+- **Fast Infrastructure Deployment**: 5-8 minutes from start to finish (60-75% faster)
+- **Optimized GitLab Configuration**: Streamlined service initialization
+- **Efficient Resource Allocation**: Right-sized instances and storage
 
----
+### Pipeline Optimizations
+- **Parallel Job Execution**: Multiple training jobs can run concurrently
+- **Cached Dependencies**: Docker layer caching for faster builds
+- **Artifact Compression**: Optimized artifact packaging and storage
 
-**🎉 Your GitLab server is now ready for use!**
-
-This optimized GitLab deployment provides everything needed for Git repository hosting, issue tracking, CI/CD pipelines, and collaborative development in a fast, secure, and cost-effective way.
-
----
-
-## 📅 Recent Improvements
-
-### ⚡ Performance Optimizations
-- **60-75% faster deployments**: From 20+ minutes to ~5-8 minutes
-- **Streamlined architecture**: Removed unnecessary services and processes
-- **Optimized configurations**: Database, memory, and service tuning
-
-### 🔧 Authentication Simplification  
-- **Root user only**: No more complex custom user creation
-- **Guaranteed authentication**: Eliminates 422 errors and namespace issues
-- **Immediate access**: No waiting for user provisioning
-
-### 🚀 Technical Improvements
-- **Optimized provisioners**: Better timing and error handling
-- **Enhanced outputs**: Simple and reliable credential retrieval
-- **Comprehensive health checks**: Automated verification tools
-
-### 🏗️ Infrastructure Architecture (Latest Update)
-- **Modular Infrastructure**: Reorganized from monolithic server.tf into 6 focused components
-- **Clean Separation**: vpc.tf, security.tf, compute.tf, dns.tf, monitoring.tf, provisioning.tf
-- **Better Maintainability**: Easier troubleshooting, updates, and team collaboration
-- **Same Performance**: All optimizations preserved in the new organized structure
-
-### 🔧 Configuration Fixes (Latest Update)
-- **Deprecated Config Removal**: Fixed GitLab 18.x compatibility issues
-- **Grafana Config**: Removed deprecated `grafana['enable'] = false` (unsupported in GitLab 18.x)
-- **Git Data Dirs**: Removed deprecated `git_data_dirs` configuration (removed in GitLab 18.0)
-- **Service Stability**: All GitLab services now start reliably without configuration errors
-- **Performance Preserved**: All valid performance optimizations maintained (monitoring services disabled)
-
-### 🚀 Health Check Script Improvements (Latest Update)
-- **Bash Health Check Script**: New `check_gitlab_health.sh` with 12 retries (~10 minute monitoring window)
-- **Comprehensive Monitoring**: HTTP, SSH, services, web interface, and root password checks
-- **Real-time Progress**: Verbose output shows detailed progress during deployment
-- **Auto IP Detection**: Automatically detects GitLab IP from OpenTofu outputs
-- **Production Ready**: Handles edge cases, timeouts, and provides clear status reporting
-- **Legacy Support**: Python version still available for backward compatibility
+### Cost Optimizations
+- **Spot Instance Support**: Use spot instances for training jobs
+- **Auto-scaling**: Scale runners based on pipeline demand
+- **Storage Lifecycle**: Automated artifact retention policies
 
 ---
 
-**📅 Last Updated**: January 2025  
-**🔄 Current Deployment**: Optimized, Modular, and **Configuration-Fixed** (5-8 min deployment)  
-**✅ Status**: All systems **FULLY OPERATIONAL** - 9/9 services running, deprecated configs resolved, web interface accessible
+## 📅 Recent Updates
+
+### ⚡ Three-Script Architecture (Latest)
+- **Modular Design**: Separated infrastructure setup from training deployment
+- **Reusable Components**: Easy to add different training job types
+- **Clean Workflows**: Destroy → Setup → Launch pattern for reproducible deployments
+
+### 🔧 Training Pipeline Integration
+- **SageMaker Integration**: Full ML training pipeline with AWS SageMaker
+- **Artifact Management**: Automated model packaging and S3 storage
+- **Monitoring**: Comprehensive pipeline and training job monitoring
+
+### 🚀 Performance Improvements
+- **Fast Deployment**: Infrastructure deployment in 5-8 minutes
+- **Optimized Scripts**: Error handling and retry logic for reliability
+- **Health Monitoring**: Automated health checks and verification
+
+---
+
+**📅 Last Updated**: September 2025  
+**🔄 Architecture**: Three-Script Modular Design with SageMaker Integration  
+**✅ Status**: Production Ready - Full ML Training CI/CD Pipeline
+
+---
+
+**🎉 Your SageMaker Training CI/CD Pipeline is ready!**
+
+This solution provides everything needed for automated machine learning workflows with GitLab CI/CD, SageMaker training jobs, artifact management, and comprehensive monitoring in a secure, scalable, and cost-effective architecture.
