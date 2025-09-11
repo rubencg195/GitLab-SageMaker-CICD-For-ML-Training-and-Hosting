@@ -181,6 +181,113 @@ check_gitlab_ready() {
 # Check if GitLab is ready (but don't fail if not)
 check_gitlab_ready || echo "$(date): Continuing with setup even if readiness check timed out..."
 
+# OPTIMIZATION 11: Configure GitLab runners for CI/CD pipelines
+echo "$(date): Setting up GitLab CI/CD runners..."
+setup_gitlab_runners() {
+    # Install GitLab Runner
+    curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | bash
+    apt-get install -y gitlab-runner
+    
+    # Get GitLab URL (using public IP if available)
+    if [ ! -z "$PUBLIC_IP" ] && [ "$PUBLIC_IP" != "404" ]; then
+        GITLAB_URL="http://$PUBLIC_IP"
+    else
+        GITLAB_URL="http://localhost"
+    fi
+    
+    # Wait for GitLab to be fully ready for runner registration
+    echo "$(date): Waiting for GitLab to be ready for runner registration..."
+    sleep 15
+    
+    # Get registration token from GitLab
+    echo "$(date): Getting runner registration token..."
+    REGISTRATION_TOKEN=""
+    for attempt in 1 2 3 4 5; do
+        REGISTRATION_TOKEN=$(gitlab-rails runner "puts Gitlab::CurrentSettings.runners_registration_token" 2>/dev/null || echo "")
+        if [ -n "$REGISTRATION_TOKEN" ] && [ "$REGISTRATION_TOKEN" != "nil" ]; then
+            echo "$(date): Got registration token: ${REGISTRATION_TOKEN:0:20}..."
+            break
+        fi
+        echo "$(date): Attempt $attempt/5: Waiting for registration token..."
+        sleep 10
+    done
+    
+    if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "nil" ]; then
+        echo "$(date): WARNING: Could not get runner registration token, trying alternative method..."
+        # Try to get token via GitLab API after waiting more
+        sleep 30
+        REGISTRATION_TOKEN=$(gitlab-rails runner "puts Gitlab::CurrentSettings.runners_registration_token" 2>/dev/null || echo "")
+    fi
+    
+    if [ -n "$REGISTRATION_TOKEN" ] && [ "$REGISTRATION_TOKEN" != "nil" ]; then
+        # Register multiple runners for better performance
+        echo "$(date): Registering GitLab runners..."
+        
+        for runner_num in 1 2 3; do
+            echo "$(date): Registering runner #$runner_num..."
+            gitlab-runner register \
+                --non-interactive \
+                --url "$GITLAB_URL" \
+                --registration-token "$REGISTRATION_TOKEN" \
+                --executor "shell" \
+                --description "SageMaker CI/CD Runner #$runner_num" \
+                --tag-list "" \
+                --run-untagged="true" \
+                --locked="false" \
+                --docker-image="" \
+                --shell="bash" || echo "$(date): Runner #$runner_num registration failed, continuing..."
+        done
+        
+        # Update runner configuration for optimal performance
+        echo "$(date): Optimizing runner configuration..."
+        cat > /etc/gitlab-runner/config.toml << EOF
+concurrent = 4
+check_interval = 3
+connection_max_age = "15m0s"
+
+[session_server]
+  session_timeout = 1800
+
+EOF
+        
+        # Add each registered runner with optimal settings
+        for runner_num in 1 2 3; do
+            RUNNER_TOKEN=$(grep -A 20 "SageMaker CI/CD Runner #$runner_num" /etc/gitlab-runner/config.toml | grep "token" | head -1 | cut -d'"' -f2 || echo "")
+            if [ -n "$RUNNER_TOKEN" ]; then
+                cat >> /etc/gitlab-runner/config.toml << EOF
+[[runners]]
+  name = "SageMaker CI/CD Runner #$runner_num"
+  url = "$GITLAB_URL"
+  token = "$RUNNER_TOKEN"
+  executor = "shell"
+  run_untagged = true
+  locked = false
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    
+EOF
+            fi
+        done
+        
+        # Start GitLab Runner service
+        systemctl enable gitlab-runner
+        systemctl start gitlab-runner
+        
+        # Verify runners are registered
+        echo "$(date): Verifying runner registration..."
+        gitlab-runner verify --delete || echo "$(date): Runner verification completed"
+        gitlab-runner list || echo "$(date): Listed runners"
+        
+        echo "$(date): GitLab runners setup completed successfully"
+    else
+        echo "$(date): WARNING: Could not register runners - no registration token available"
+        echo "$(date): Runners can be registered manually later using configure-gitlab-cicd script"
+    fi
+}
+
+# Run runner setup
+setup_gitlab_runners
+
 # OPTIMIZATION 10: Streamlined completion (no Rails commands for speed)
 GITLAB_USERNAME="${gitlab_username}"
 GITLAB_PASSWORD="${gitlab_password}"
@@ -206,6 +313,7 @@ PERFORMANCE OPTIMIZATIONS APPLIED:
 - Monitoring services disabled
 - Database settings optimized
 - Single reconfigure process
+- GitLab runners configured for CI/CD pipelines
 EOF
 
 # Set secure permissions
@@ -226,3 +334,4 @@ echo "- Optimized database settings" >> /var/log/gitlab-install.log
 echo "- Single GitLab reconfigure" >> /var/log/gitlab-install.log
 echo "- Reduced timeout intervals" >> /var/log/gitlab-install.log
 echo "- User creation delegated to provisioner" >> /var/log/gitlab-install.log
+echo "- GitLab CI/CD runners configured during installation" >> /var/log/gitlab-install.log

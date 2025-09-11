@@ -339,13 +339,87 @@ check_gitlab_runners() {
     if [ "$RUNNING_RUNNERS" -gt 0 ]; then
         log_success "GitLab runners are running ($RUNNING_RUNNERS runners)"
         
-        # Get runner list
+        # Check runner configuration for common issues
+        RUNNER_CONFIG=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo cat /etc/gitlab-runner/config.toml" 2>/dev/null || echo "")
+        
+        if [ -n "$RUNNER_CONFIG" ]; then
+            # Check for run_untagged configuration
+            if ! echo "$RUNNER_CONFIG" | grep -q "run_untagged = true"; then
+                log_error "RUNNER CONFIGURATION ISSUE: Runners missing 'run_untagged = true' - jobs will be stuck!"
+                log_info "Fix: Add 'run_untagged = true' and 'locked = false' to each runner in config.toml"
+                return 1
+            fi
+            
+            # Check concurrent setting
+            CONCURRENT=$(echo "$RUNNER_CONFIG" | grep "concurrent" | head -1 | grep -o '[0-9]*' || echo "1")
+            if [ "$CONCURRENT" -lt 2 ]; then
+                log_warning "Low concurrency setting: concurrent = $CONCURRENT (consider increasing for better performance)"
+            else
+                log_success "Runner concurrency setting: $CONCURRENT"
+            fi
+            
+            log_success "Runner configuration appears correct for untagged jobs"
+        fi
+        
+        # Verify runners are alive
+        RUNNER_VERIFY=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner verify" 2>/dev/null || echo "")
+        if echo "$RUNNER_VERIFY" | grep -q "is alive"; then
+            ALIVE_COUNT=$(echo "$RUNNER_VERIFY" | grep -c "is alive" || echo "0")
+            log_success "Verified $ALIVE_COUNT runners are alive and connected to GitLab"
+        else
+            log_warning "Could not verify runner connectivity to GitLab"
+        fi
+        
+        # Get runner list for detailed info
         RUNNER_LIST=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner list" 2>/dev/null || echo "")
         if [ -n "$RUNNER_LIST" ]; then
-            log_debug "Runner details:"
-            echo "$RUNNER_LIST" | while read -r line; do
-                log_debug "  $line"
-            done
+            REGISTERED_COUNT=$(echo "$RUNNER_LIST" | grep -c "Executor=shell" || echo "0")
+            log_info "Found $REGISTERED_COUNT registered shell runners"
+            if [ "$VERBOSE" = true ]; then
+                log_debug "Runner details:"
+                echo "$RUNNER_LIST" | while read -r line; do
+                    log_debug "  $line"
+                done
+            fi
+        fi
+        
+        # Check project-specific runner assignments
+        log_info "Checking project-specific runner assignments..."
+        PROJECT_RUNNERS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/runners" 2>/dev/null || echo "")
+        
+        if [ -n "$PROJECT_RUNNERS" ] && echo "$PROJECT_RUNNERS" | grep -q '"id"'; then
+            PROJECT_RUNNER_COUNT=$(echo "$PROJECT_RUNNERS" | grep -c '"id":' || echo "0")
+            log_success "Project has $PROJECT_RUNNER_COUNT runners assigned"
+            
+            if [ "$VERBOSE" = true ]; then
+                log_debug "Project-assigned runners:"
+                echo "$PROJECT_RUNNERS" | grep -o '"id":[0-9]*' | while read -r runner_line; do
+                    RUNNER_ID=$(echo "$runner_line" | cut -d':' -f2)
+                    RUNNER_STATUS=$(echo "$PROJECT_RUNNERS" | grep -A 10 "\"id\":$RUNNER_ID" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+                    RUNNER_ONLINE=$(echo "$PROJECT_RUNNERS" | grep -A 10 "\"id\":$RUNNER_ID" | grep -o '"online":[^,}]*' | head -1 | cut -d':' -f2 || echo "unknown")
+                    log_debug "  Runner #$RUNNER_ID: Status=$RUNNER_STATUS, Online=$RUNNER_ONLINE"
+                done
+            fi
+        else
+            log_error "❌ CRITICAL: Project has NO RUNNERS ASSIGNED!"
+            log_info "💡 This is why jobs are stuck - runners exist but aren't assigned to project"
+            log_info "🔧 Solutions:"
+            log_info "   1. Enable shared runners for the project (recommended)"
+            log_info "   2. Assign specific runners to the project"
+            log_info "   3. Configure runners as instance-wide during GitLab installation"
+            return 1
+        fi
+        
+        # Check if shared runners are enabled for the project
+        PROJECT_DETAILS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID" 2>/dev/null || echo "")
+        if [ -n "$PROJECT_DETAILS" ]; then
+            SHARED_RUNNERS_ENABLED=$(echo "$PROJECT_DETAILS" | grep -o '"shared_runners_enabled":[^,}]*' | cut -d':' -f2 || echo "false")
+            if [ "$SHARED_RUNNERS_ENABLED" = "true" ]; then
+                log_success "Shared runners are enabled for this project"
+            else
+                log_warning "Shared runners are disabled for this project"
+                log_info "💡 Either enable shared runners OR assign specific runners to project"
+            fi
         fi
     else
         log_warning "No GitLab runners are running"
@@ -354,6 +428,7 @@ check_gitlab_runners() {
     
     return 0
 }
+
 
 # Function to check CI/CD variables
 check_cicd_variables() {
@@ -447,12 +522,12 @@ check_yaml_configuration() {
     return 0
 }
 
-# Function to check pipeline status
-check_pipeline_status() {
-    log_info "Checking pipeline status..."
+# Function to list all pipelines with details
+list_all_pipelines() {
+    log_info "Listing all pipelines for debugging..."
     
-    # Get latest pipelines
-    PIPELINES_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines?per_page=5" 2>/dev/null || echo "")
+    # Get all pipelines (more than default)
+    PIPELINES_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines?per_page=10&sort=desc" 2>/dev/null || echo "")
     
     if [ -z "$PIPELINES_RESPONSE" ]; then
         log_error "Failed to retrieve pipeline information"
@@ -465,72 +540,241 @@ check_pipeline_status() {
         return 1
     fi
     
-    # Check for recent pipeline failures with specific error messages
-    LATEST_PIPELINE_STATUS=$(echo "$PIPELINES_RESPONSE" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+    # Count total pipelines
+    PIPELINE_COUNT=$(echo "$PIPELINES_RESPONSE" | grep -c '"id":' || echo "0")
+    log_info "Found $PIPELINE_COUNT pipelines in project"
     
-    if [ "$LATEST_PIPELINE_STATUS" = "failed" ]; then
-        LATEST_PIPELINE_ID=$(echo "$PIPELINES_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
-        log_warning "Latest pipeline failed (ID: $LATEST_PIPELINE_ID)"
-        
-        # Try to get detailed failure information
-        PIPELINE_JOBS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-            "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines/$LATEST_PIPELINE_ID/jobs" 2>/dev/null || echo "")
-        
-        if echo "$PIPELINE_JOBS" | grep -q "yaml invalid\|Unable to create pipeline"; then
-            log_error "YAML configuration error detected in latest pipeline"
-            log_info "Common causes: Invalid YAML syntax, shell substitution issues, or configuration nesting problems"
-            return 1
-        fi
+    # List all pipelines with details
+    if [ "$VERBOSE" = true ]; then
+        log_info "Pipeline details:"
+        echo "$PIPELINES_RESPONSE" | grep -o '"id":[0-9]*' | while read -r pipeline_line; do
+            PIPELINE_ID=$(echo "$pipeline_line" | cut -d':' -f2)
+            
+            # Extract details for this specific pipeline
+            PIPELINE_BLOCK=$(echo "$PIPELINES_RESPONSE" | sed -n "/$pipeline_line/,/},{/p" | head -20)
+            
+            PIPELINE_STATUS=$(echo "$PIPELINE_BLOCK" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            PIPELINE_REF=$(echo "$PIPELINE_BLOCK" | grep -o '"ref":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            PIPELINE_SHA=$(echo "$PIPELINE_BLOCK" | grep -o '"sha":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            PIPELINE_CREATED=$(echo "$PIPELINE_BLOCK" | grep -o '"created_at":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            
+            log_info "  Pipeline #$PIPELINE_ID: Status=$PIPELINE_STATUS, Ref=$PIPELINE_REF, SHA=${PIPELINE_SHA:0:8}, Created=$PIPELINE_CREATED"
+        done
     fi
     
-    # Get latest pipeline details
-    LATEST_PIPELINE_ID=$(echo "$PIPELINES_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
-    LATEST_PIPELINE_STATUS=$(echo "$PIPELINES_RESPONSE" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
-    LATEST_PIPELINE_REF=$(echo "$PIPELINES_RESPONSE" | grep -o '"ref":"[^"]*"' | head -1 | cut -d'"' -f4)
+    return 0
+}
+
+# Function to describe latest pipeline in detail
+describe_latest_pipeline() {
+    log_info "Analyzing latest pipeline in detail..."
     
-    log_info "Latest pipeline: ID=$LATEST_PIPELINE_ID, Status=$LATEST_PIPELINE_STATUS, Ref=$LATEST_PIPELINE_REF"
+    # Initialize variables to avoid unbound variable errors
+    LATEST_PIPELINE_ID=""
+    LATEST_PIPELINE_STATUS=""
+    LATEST_PIPELINE_REF=""
+    LATEST_PIPELINE_SHA=""
+    
+    # Get latest pipeline
+    LATEST_PIPELINE_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines?per_page=1" 2>/dev/null || echo "")
+    
+    if [ -z "$LATEST_PIPELINE_RESPONSE" ] || ! echo "$LATEST_PIPELINE_RESPONSE" | grep -q '"id"'; then
+        log_warning "No latest pipeline found"
+        return 1
+    fi
+    
+    # Extract pipeline details
+    LATEST_PIPELINE_ID=$(echo "$LATEST_PIPELINE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+    LATEST_PIPELINE_STATUS=$(echo "$LATEST_PIPELINE_RESPONSE" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+    LATEST_PIPELINE_REF=$(echo "$LATEST_PIPELINE_RESPONSE" | grep -o '"ref":"[^"]*"' | head -1 | cut -d'"' -f4)
+    LATEST_PIPELINE_SHA=$(echo "$LATEST_PIPELINE_RESPONSE" | grep -o '"sha":"[^"]*"' | head -1 | cut -d'"' -f4)
+    
+    log_info "=== LATEST PIPELINE ANALYSIS ==="
+    log_info "Pipeline ID: $LATEST_PIPELINE_ID"
+    log_info "Status: $LATEST_PIPELINE_STATUS"
+    log_info "Branch/Ref: $LATEST_PIPELINE_REF"
+    log_info "Commit SHA: ${LATEST_PIPELINE_SHA:0:12}"
+    log_info "Pipeline URL: $GITLAB_URL/root/$PROJECT_NAME/-/pipelines/$LATEST_PIPELINE_ID"
     
     # Get detailed pipeline information
     PIPELINE_DETAILS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines/$LATEST_PIPELINE_ID" 2>/dev/null || echo "")
     
     if [ -n "$PIPELINE_DETAILS" ]; then
-        PIPELINE_URL=$(echo "$PIPELINE_DETAILS" | grep -o '"web_url":"[^"]*"' | cut -d'"' -f4 || echo "")
-        PIPELINE_CREATED=$(echo "$PIPELINE_DETAILS" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4 || echo "")
+        PIPELINE_CREATED=$(echo "$PIPELINE_DETAILS" | grep -o '"created_at":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        PIPELINE_UPDATED=$(echo "$PIPELINE_DETAILS" | grep -o '"updated_at":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+        PIPELINE_DURATION=$(echo "$PIPELINE_DETAILS" | grep -o '"duration":[0-9]*' | cut -d':' -f2 || echo "0")
         
-        log_info "Pipeline URL: $PIPELINE_URL"
-        log_info "Pipeline created: $PIPELINE_CREATED"
+        log_info "Created: $PIPELINE_CREATED"
+        log_info "Last updated: $PIPELINE_UPDATED"
+        log_info "Duration: ${PIPELINE_DURATION}s"
+        
+        # Check for pipeline-level errors
+        if echo "$PIPELINE_DETAILS" | grep -q '"yaml_errors"'; then
+            YAML_ERRORS=$(echo "$PIPELINE_DETAILS" | grep -o '"yaml_errors":\[[^]]*\]' || echo "")
+            log_error "YAML ERRORS DETECTED: $YAML_ERRORS"
+        fi
     fi
     
-    # Get pipeline jobs
-    JOBS_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines/$LATEST_PIPELINE_ID/jobs" 2>/dev/null || echo "")
+    return 0
+}
+
+# Function to list and describe all jobs in latest pipeline
+describe_pipeline_jobs() {
+    local pipeline_id="$1"
     
-    if [ -n "$JOBS_RESPONSE" ] && echo "$JOBS_RESPONSE" | grep -q '"name"'; then
-        log_info "Pipeline jobs:"
-        echo "$JOBS_RESPONSE" | grep -o '"name":"[^"]*"' | cut -d'"' -f4 | while read -r job_name; do
-            job_status=$(echo "$JOBS_RESPONSE" | grep -A 5 "\"name\":\"$job_name\"" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
-            log_info "  • $job_name: $job_status"
-        done
+    log_info "Analyzing all jobs in latest pipeline..."
+    
+    if [ -z "$pipeline_id" ]; then
+        log_warning "No pipeline ID provided for job analysis"
+        return 1
+    fi
+    
+    # Get all jobs for the latest pipeline
+    JOBS_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/pipelines/$pipeline_id/jobs" 2>/dev/null || echo "")
+    
+    if [ -z "$JOBS_RESPONSE" ] || ! echo "$JOBS_RESPONSE" | grep -q '"name"'; then
+        log_warning "No jobs found in latest pipeline"
+        return 1
+    fi
+    
+    # Count jobs
+    JOB_COUNT=$(echo "$JOBS_RESPONSE" | grep -c '"name":' || echo "0")
+    log_info "=== PIPELINE JOBS ANALYSIS ($JOB_COUNT jobs) ==="
+    
+    # Get available runners for comparison
+    AVAILABLE_RUNNERS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/runners" 2>/dev/null || echo "")
+    RUNNER_COUNT=$(echo "$AVAILABLE_RUNNERS" | grep -c '"id":' || echo "0")
+    log_info "Project has $RUNNER_COUNT assigned runners"
+    
+    # Process each job
+    echo "$JOBS_RESPONSE" | grep -o '"id":[0-9]*' | while read -r job_line; do
+        JOB_ID=$(echo "$job_line" | cut -d':' -f2)
+        
+        # Get detailed job information
+        JOB_DETAILS=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/jobs/$JOB_ID" 2>/dev/null || echo "")
+        
+        if [ -n "$JOB_DETAILS" ]; then
+            JOB_NAME=$(echo "$JOB_DETAILS" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            JOB_STATUS=$(echo "$JOB_DETAILS" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            JOB_STAGE=$(echo "$JOB_DETAILS" | grep -o '"stage":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            JOB_CREATED=$(echo "$JOB_DETAILS" | grep -o '"created_at":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+            JOB_STARTED=$(echo "$JOB_DETAILS" | grep -o '"started_at":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "null")
+            JOB_RUNNER_ID=$(echo "$JOB_DETAILS" | grep -o '"runner":{"id":[0-9]*' | cut -d':' -f3 || echo "null")
+            
+            log_info "--- Job: $JOB_NAME (ID: $JOB_ID) ---"
+            log_info "  Status: $JOB_STATUS"
+            log_info "  Stage: $JOB_STAGE"
+            log_info "  Created: $JOB_CREATED"
+            log_info "  Started: $JOB_STARTED"
+            log_info "  Runner ID: $JOB_RUNNER_ID"
+            log_info "  Job URL: $GITLAB_URL/root/$PROJECT_NAME/-/jobs/$JOB_ID"
+            
+            # Analyze job status
+            case "$JOB_STATUS" in
+                "pending")
+                    log_warning "  🟡 Job is PENDING - waiting for runner assignment"
+                    if [ "$JOB_RUNNER_ID" = "null" ]; then
+                        log_error "  ❌ NO RUNNER ASSIGNED - this is the problem!"
+                        log_info "  💡 Possible causes:"
+                        log_info "     - No runners available for this project"
+                        log_info "     - Runners not configured for untagged jobs"
+                        log_info "     - Runner capacity exhausted"
+                    fi
+                    ;;
+                "running")
+                    log_success "  🟢 Job is RUNNING on runner $JOB_RUNNER_ID"
+                    ;;
+                "success")
+                    log_success "  ✅ Job COMPLETED SUCCESSFULLY"
+                    ;;
+                "failed")
+                    log_error "  ❌ Job FAILED"
+                    # Try to get failure reason
+                    if echo "$JOB_DETAILS" | grep -q '"failure_reason"'; then
+                        FAILURE_REASON=$(echo "$JOB_DETAILS" | grep -o '"failure_reason":"[^"]*"' | cut -d'"' -f4)
+                        log_error "  📋 Failure reason: $FAILURE_REASON"
+                    fi
+                    ;;
+                "canceled"|"cancelled")
+                    log_warning "  🔴 Job was CANCELED"
+                    ;;
+                "stuck")
+                    log_error "  🚫 Job is STUCK"
+                    log_info "  💡 Usually means no runners available or runner configuration issue"
+                    ;;
+                *)
+                    log_info "  ⚪ Job status: $JOB_STATUS"
+                    ;;
+            esac
+            
+            # Get job trace/logs for failed or pending jobs
+            if [ "$JOB_STATUS" = "failed" ] || [ "$JOB_STATUS" = "pending" ] && [ "$VERBOSE" = true ]; then
+                log_debug "  📋 Getting job trace for debugging..."
+                JOB_TRACE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/jobs/$JOB_ID/trace" 2>/dev/null | tail -10 || echo "")
+                if [ -n "$JOB_TRACE" ]; then
+                    log_debug "  Last 10 lines of job trace:"
+                    echo "$JOB_TRACE" | while IFS= read -r line; do
+                        log_debug "    $line"
+                    done
+                fi
+            fi
+            
+            echo ""
+        fi
+    done
+    
+    return 0
+}
+
+# Function to check pipeline status (enhanced)
+check_pipeline_status() {
+    log_info "Checking pipeline status..."
+    
+    # Initialize pipeline variables to avoid unbound variable errors
+    LATEST_PIPELINE_ID=""
+    LATEST_PIPELINE_STATUS=""
+    LATEST_PIPELINE_REF=""
+    LATEST_PIPELINE_SHA=""
+    
+    # First list all pipelines
+    list_all_pipelines
+    echo ""
+    
+    # Then describe the latest pipeline
+    describe_latest_pipeline
+    echo ""
+    
+    # Finally analyze all jobs in detail (if we have a pipeline ID)
+    if [ -n "$LATEST_PIPELINE_ID" ]; then
+        describe_pipeline_jobs "$LATEST_PIPELINE_ID"
+    else
+        log_warning "No pipeline ID available for job analysis"
     fi
     
     # Determine overall pipeline health
-    case "$LATEST_PIPELINE_STATUS" in
-        "success")
-            log_success "Latest pipeline completed successfully"
-            return 0
-            ;;
-        "failed")
-            log_error "Latest pipeline failed"
-            return 1
-            ;;
-        "running"|"pending")
-            log_warning "Latest pipeline is still $LATEST_PIPELINE_STATUS"
-            return 0
-            ;;
-        *)
-            log_warning "Latest pipeline status: $LATEST_PIPELINE_STATUS"
-            return 0
-            ;;
-    esac
+    if [ -n "$LATEST_PIPELINE_STATUS" ]; then
+        case "$LATEST_PIPELINE_STATUS" in
+            "success")
+                log_success "Latest pipeline completed successfully"
+                return 0
+                ;;
+            "failed")
+                log_error "Latest pipeline failed - check job details above"
+                return 1
+                ;;
+            "running"|"pending")
+                log_warning "Latest pipeline is still $LATEST_PIPELINE_STATUS - check job assignments above"
+                return 0
+                ;;
+            *)
+                log_warning "Latest pipeline status: $LATEST_PIPELINE_STATUS"
+                return 0
+                ;;
+        esac
+    else
+        log_warning "Could not determine pipeline status"
+        return 1
+    fi
 }
 
 # Function to check S3 buckets
