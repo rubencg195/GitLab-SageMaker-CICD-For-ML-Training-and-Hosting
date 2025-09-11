@@ -17,19 +17,18 @@ image: python:${PYTHON_VERSION}
 before_script:
   - pip install --upgrade pip
   - pip install boto3 sagemaker requests
-  - echo "Pipeline triggered by commit $(git rev-parse --short HEAD)"
-  - echo "Commit message: $(git log --oneline -1)"
+  - echo "Pipeline triggered by commit hash"
   - echo "Loading environment variables..."
-  - test -f .env && source .env || echo "No .env file found"
+  - if [ -f .env ]; then source .env; fi
   - echo "Environment setup completed"
 
 build_job:
   stage: build
   script:
     - echo "Building and preparing environment..."
-    - echo "Python version: $(python --version)"
-    - echo "Current directory: $(pwd)"
-    - echo "Files in directory: $(ls -la)"
+    - python --version
+    - pwd
+    - ls -la
     - echo "Dependencies installed."
     - mkdir -p .venv
     - echo "Virtual environment placeholder created"
@@ -42,33 +41,25 @@ train_job:
   stage: train
   script:
     - echo "Starting SageMaker training job..."
-    - echo "Current directory: $(pwd)"
+    - pwd
     - echo "Available files:"
     - ls -la
     - echo "Python files:"
     - ls -la *.py || echo "No Python files found"
     - echo "Environment variables:"
-    - echo "CI_PROJECT_NAME: ${CI_PROJECT_NAME}"
-    - echo "CI_COMMIT_SHORT_SHA: ${CI_COMMIT_SHORT_SHA}"
-    - echo "AWS_ACCOUNT_ID: ${AWS_ACCOUNT_ID:-NOT_SET}"
-    - echo "SAGEMAKER_ROLE_ARN: ${SAGEMAKER_ROLE_ARN}"
-    - echo "S3_BUCKET: ${S3_BUCKET}"
-    - echo "Checking if train.py exists:"
-    - test -f train.py && echo "✅ train.py exists" || echo "❌ train.py not found"
+    - echo "CI_PROJECT_NAME is $CI_PROJECT_NAME"
+    - echo "CI_COMMIT_SHORT_SHA is $CI_COMMIT_SHORT_SHA"
+    - echo "AWS_ACCOUNT_ID is $AWS_ACCOUNT_ID"
+    - echo "SAGEMAKER_ROLE_ARN is $SAGEMAKER_ROLE_ARN"
+    - echo "S3_BUCKET is $S3_BUCKET"
+    - echo "Checking if train.py exists"
+    - test -f train.py && echo "train.py exists" || echo "train.py not found"
     - |
       if [ -f train.py ]; then
-        python train.py \
-          --job-name "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}" \
-          --role-arn "$SAGEMAKER_ROLE_ARN" \
-          --s3-bucket "$S3_BUCKET" \
-          --instance-type ml.m5.large \
-          --max-runtime 3600 \
-          --num-round 100 \
-          --max-depth 6 \
-          --eta 0.3 \
-          --objective reg:squarederror
+        echo "Running training script..."
+        python train.py --job-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA" --role-arn "$SAGEMAKER_ROLE_ARN" --s3-bucket "$S3_BUCKET" --instance-type ml.m5.large --max-runtime 3600 --num-round 100 --max-depth 6 --eta 0.3 --objective reg:squarederror
       else
-        echo "❌ train.py not found, skipping training"
+        echo "train.py not found, skipping training"
         exit 1
       fi
   artifacts:
@@ -83,19 +74,16 @@ package_job:
     - echo "Creating and uploading artifact package..."
     - echo "Available files:"
     - ls -la
-    - echo "Checking for create_zip_package.py:"
-    - test -f create_zip_package.py && echo "✅ create_zip_package.py exists" || echo "❌ create_zip_package.py not found"
-    - echo "Checking for training_output directory:"
-    - test -d training_output && echo "✅ training_output exists" || echo "❌ training_output not found"
+    - echo "Checking for create_zip_package.py"
+    - test -f create_zip_package.py && echo "create_zip_package.py exists" || echo "create_zip_package.py not found"
+    - echo "Checking for training_output directory"
+    - test -d training_output && echo "training_output exists" || echo "training_output not found"
     - |
       if [ -f create_zip_package.py ]; then
-        python create_zip_package.py \
-          --zip-name "${CI_PROJECT_NAME}-${CI_COMMIT_SHORT_SHA}.zip" \
-          --release-type "training-artifact" \
-          --commit-id "$CI_COMMIT_SHORT_SHA" \
-          --training-output training_output/
+        echo "Running packaging script..."
+        python create_zip_package.py --zip-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA.zip" --release-type "training-artifact" --commit-id "$CI_COMMIT_SHORT_SHA" --training-output training_output/
       else
-        echo "❌ create_zip_package.py not found, skipping packaging"
+        echo "create_zip_package.py not found, skipping packaging"
         exit 1
       fi
   dependencies:
@@ -111,17 +99,15 @@ notify_job:
     - echo "Sending pipeline completion notification..."
     - echo "Available files:"
     - ls -la
-    - echo "Checking for send_notification.py:"
-    - test -f send_notification.py && echo "✅ send_notification.py exists" || echo "❌ send_notification.py not found"
+    - echo "Checking for send_notification.py"
+    - test -f send_notification.py && echo "send_notification.py exists" || echo "send_notification.py not found"
     - |
       if [ -f send_notification.py ]; then
-        python send_notification.py \
-          --pipeline-status "$CI_PIPELINE_STATUS" \
-          --project-name "$CI_PROJECT_NAME" \
-          --pipeline-url "$CI_PIPELINE_URL"
+        echo "Running notification script..."
+        python send_notification.py --pipeline-status "$CI_PIPELINE_STATUS" --project-name "$CI_PROJECT_NAME" --pipeline-url "$CI_PIPELINE_URL"
       else
-        echo "❌ send_notification.py not found, skipping notification"
-        echo "✅ Notification step completed (mock)"
+        echo "send_notification.py not found, skipping notification"
+        echo "Notification step completed (mock)"
       fi
   when: always
   dependencies:
