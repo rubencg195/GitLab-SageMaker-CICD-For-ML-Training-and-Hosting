@@ -205,7 +205,7 @@ setup_gitlab_runners() {
     for attempt in 1 2 3 4 5; do
         REGISTRATION_TOKEN=$(gitlab-rails runner "puts Gitlab::CurrentSettings.runners_registration_token" 2>/dev/null || echo "")
         if [ -n "$REGISTRATION_TOKEN" ] && [ "$REGISTRATION_TOKEN" != "nil" ]; then
-            echo "$(date): Got registration token: ${REGISTRATION_TOKEN:0:20}..."
+            echo "$(date): Got registration token: $${REGISTRATION_TOKEN:0:20}..."
             break
         fi
         echo "$(date): Attempt $attempt/5: Waiting for registration token..."

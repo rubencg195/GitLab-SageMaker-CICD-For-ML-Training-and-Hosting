@@ -216,9 +216,41 @@ EOF
     log_info "Repository setup complete - GitLab now contains training demo with unique commit $COMMIT_HASH"
 }
 
+# Function to get or create fresh GitLab token  
+get_fresh_gitlab_token() {
+    log_info "Getting fresh GitLab access token for API calls..."
+    
+    # Create a fresh token for monitoring
+    TIMESTAMP=$(date +%s)
+    TOKEN_NAME="pipeline-monitor-token-$TIMESTAMP"
+    
+    FRESH_TOKEN=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"
+        user = User.find_by(username: 'root')
+        if user
+            token = user.personal_access_tokens.create(
+                scopes: ['api', 'read_user', 'read_repository'],
+                name: '$TOKEN_NAME',
+                expires_at: 2.hours.from_now
+            )
+            puts token.token if token.persisted?
+        end\"" 2>/dev/null)
+    
+    if [ -n "$FRESH_TOKEN" ] && [ ${#FRESH_TOKEN} -gt 20 ]; then
+        GITLAB_TOKEN="$FRESH_TOKEN"
+        log_success "Fresh GitLab token obtained for monitoring"
+        return 0
+    else
+        log_warning "Could not get fresh token, using provided token"
+        return 1
+    fi
+}
+
 # Function to monitor pipeline
 monitor_pipeline() {
     log_info "Monitoring GitLab CI/CD pipeline for new commit..."
+    
+    # Get a fresh token for API calls
+    get_fresh_gitlab_token || log_warning "Using original token for monitoring"
     
     # Wait longer for GitLab to detect the new commit and create pipeline
     log_info "Waiting for GitLab to detect new commit and create pipeline..."

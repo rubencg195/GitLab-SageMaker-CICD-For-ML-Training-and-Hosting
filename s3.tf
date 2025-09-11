@@ -56,6 +56,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "gitlab_artifacts" {
     id     = "artifact_retention"
     status = "Enabled"
 
+    filter {
+      prefix = ""
+    }
+
     # Transition to IA after 30 days
     transition {
       days          = 30

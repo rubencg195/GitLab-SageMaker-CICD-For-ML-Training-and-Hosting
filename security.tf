@@ -39,6 +39,7 @@ resource "aws_security_group" "gitlab_sg" {
     description     = "GitLab SSH access from anywhere"
   }
 
+
   # All outbound traffic
   egress {
     from_port   = 0
@@ -102,7 +103,13 @@ resource "aws_iam_policy" "gitlab_policy" {
         Effect = "Allow"
         Action = [
           "ec2:DescribeInstances",
-          "ec2:DescribeTags"
+          "ec2:DescribeTags",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeInstanceAttribute",
+          "ec2:DescribeKeyPairs",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs"
         ]
         Resource = "*"
       },

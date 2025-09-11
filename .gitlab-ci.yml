@@ -8,8 +8,8 @@ variables:
   AWS_DEFAULT_REGION: "us-east-1"
   SAGEMAKER_ROLE_ARN: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/SageMakerExecutionRole"
   S3_BUCKET: "ml-training-data-${AWS_ACCOUNT_ID}"
-  GITLAB_ARTIFACTS_BUCKET: "${GITLAB_ARTIFACTS_BUCKET}"
-  GITLAB_RELEASES_BUCKET: "${GITLAB_RELEASES_BUCKET}"
+  GITLAB_ARTIFACTS_BUCKET: "gitlab-server-production-artifacts-9a9f2e1f"
+  GITLAB_RELEASES_BUCKET: "gitlab-server-production-releases-438fe745"
   PYTHON_VERSION: "3.8"
 
 image: python:${PYTHON_VERSION}
