@@ -108,7 +108,7 @@ resource "aws_iam_role_policy" "manager_pass_role_policy" {
         Effect = "Allow"
         Action = [
           "logs:CreateLogGroup",
-          "logs:CreateLogStream", 
+          "logs:CreateLogStream",
           "logs:PutLogEvents",
           "logs:DescribeLogGroups",
           "logs:DescribeLogStreams"
@@ -135,7 +135,7 @@ resource "aws_iam_instance_profile" "gitlab_runner_manager_profile" {
 }
 
 resource "aws_iam_instance_profile" "gitlab_runner_instance_profile" {
-  name = "gitlab-runner-instance-profile"  
+  name = "gitlab-runner-instance-profile"
   role = aws_iam_role.gitlab_runner_instance_role.name
 }
 
@@ -167,7 +167,7 @@ resource "aws_security_group" "gitlab_runner_manager_sg" {
   egress {
     from_port       = 22
     to_port         = 22
-    protocol        = "tcp"  
+    protocol        = "tcp"
     security_groups = [aws_security_group.gitlab_sg.id]
     description     = "SSH to GitLab server for configuration"
   }
@@ -301,34 +301,6 @@ resource "aws_instance" "gitlab_runner_manager" {
     Name        = "GitLab Runner Manager"
     Purpose     = "gitlab-runner-manager"
     Environment = "ml-training"
-  }
-
-  provisioner "file" {
-    source      = "server-scripts/runner-manager-health-check.sh"
-    destination = "/tmp/runner-manager-health-check.sh"
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("~/.ssh/id_rsa")
-      host        = self.public_ip
-    }
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "sudo mkdir -p /opt/gitlab-scripts",
-      "sudo mv /tmp/runner-manager-health-check.sh /opt/gitlab-scripts/runner-manager-health-check.sh",
-      "sudo chmod +x /opt/gitlab-scripts/runner-manager-health-check.sh",
-      "/opt/gitlab-scripts/runner-manager-health-check.sh"
-    ]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("~/.ssh/id_rsa")
-      host        = self.public_ip
-    }
   }
 }
 

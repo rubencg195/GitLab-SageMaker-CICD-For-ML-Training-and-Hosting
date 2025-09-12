@@ -61,7 +61,26 @@ The automated Git push process showing training scripts deployment to GitLab.
 1. **AWS CLI configured** with appropriate credentials
 2. **OpenTofu installed** (latest version recommended)
 3. **SSH key pair** available at `~/.ssh/id_rsa.pub`
-4. **AWS permissions** to create VPC, EC2, EBS, Route53, IAM resources
+4. **`jq` installed** (for JSON parsing)
+5. **AWS permissions** to create VPC, EC2, EBS, Route53, IAM resources
+
+### Install `jq`
+
+**Linux (Debian/Ubuntu):**
+```bash
+sudo apt-get update
+sudo apt-get install -y jq
+```
+
+**macOS (Homebrew):**
+```bash
+brew install jq
+```
+
+**Windows (Chocolatey):**
+```bash
+choco install jq -y
+```
 
 ### Step 1: Deploy Infrastructure
 

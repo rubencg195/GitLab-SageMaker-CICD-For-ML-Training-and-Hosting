@@ -299,14 +299,6 @@ EOF
     -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
     -s
 
-# Create health check script
-# Instead of embedding, we'll cat the content of the local health check script
-cat /opt/gitlab-scripts/runner-manager-health-check.sh > /usr/local/bin/runner-manager-health-check.sh
-chmod +x /usr/local/bin/runner-manager-health-check.sh
-
-# Set up cron job for health checks
-echo "*/15 * * * * /usr/local/bin/runner-manager-health-check.sh >> /var/log/runner-health.log 2>&1" | crontab -
-
 # Final status report
 echo "$(date): GitLab Runner Manager installation completed successfully!"
 echo ""
