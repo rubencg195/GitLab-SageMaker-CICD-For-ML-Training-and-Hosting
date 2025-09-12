@@ -172,12 +172,12 @@ EOF
     git remote add origin "$GITLAB_REPO_URL"
     log_success "GitLab authentication configured with root user"
     
-    # Use unique branch name to avoid conflicts
-    BRANCH_NAME="pipeline-$COMMIT_HASH"
+    # Push directly to main branch to trigger pipelines
+    BRANCH_NAME="main"
     
-    log_info "Creating new pipeline branch: $BRANCH_NAME"
+    log_info "Pushing directly to main branch to trigger pipeline"
     
-    # Create and switch to new branch
+    # Switch to main branch
     git checkout -b "$BRANCH_NAME"
     
     # Add all new files
@@ -196,10 +196,10 @@ EOF
 - Build trigger file: .pipeline-trigger-$COMMIT_HASH
 - Branch: $BRANCH_NAME"
     
-    # Push new branch
-    log_info "Pushing new branch to GitLab: $BRANCH_NAME"
-    if git push -u origin "$BRANCH_NAME"; then
-        log_success "New training pipeline branch pushed to GitLab (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+    # Push to main branch (force push to overwrite repository)
+    log_info "Pushing to GitLab main branch: $BRANCH_NAME"
+    if git push -f origin "$BRANCH_NAME"; then
+        log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
     else
         log_error "Failed to push training scripts to GitLab"
         return 1

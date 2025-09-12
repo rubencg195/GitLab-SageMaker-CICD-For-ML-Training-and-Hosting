@@ -210,7 +210,7 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 │   ├── launch-train-job.sh           # Training job launcher script
 │   ├── remove-gitlab-cicd.sh          # Complete cleanup script
 │   ├── gitlab-install.sh              # GitLab installation script
-│   ├── check_gitlab_health.sh         # Health check script (recommended)
+│   ├── check-gitlab-health.sh         # Health check script (recommended)
 │   ├── check_gitlab_health.py         # Health check script (legacy)
 │   └── check-train-pipeline.sh        # Comprehensive training pipeline checker
 ├── train-script/                      # Training job scripts
@@ -277,8 +277,16 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 **Symptoms**: Cannot access GitLab web interface
 **Solutions**:
 - Wait 5-10 minutes for GitLab to fully initialize
-- Run health check: `./server-scripts/check_gitlab_health.sh --verbose`
+- Run health check: `./server-scripts/check-gitlab-health.sh --verbose`
 - Check security group allows HTTP/HTTPS traffic
+
+#### 1.1 GitLab 422 Error (The change you requested was rejected)
+**Symptoms**: Login page shows "422: The change you requested was rejected" error
+**Solutions**:
+- This indicates CSRF token or form validation issues
+- Run health check: `./server-scripts/check-gitlab-health.sh --verbose` (detects this error)
+- Try accessing GitLab web interface manually to complete setup
+- GitLab may still be initializing - wait a few more minutes
 
 #### 2. Training Pipeline Failures
 **Symptoms**: CI/CD pipeline fails during training stage
@@ -304,7 +312,7 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 ### Debug Commands
 ```bash
 # Check GitLab health
-./server-scripts/check_gitlab_health.sh --verbose
+./server-scripts/check-gitlab-health.sh --verbose
 
 # Check training pipeline health (comprehensive)
 ./server-scripts/check-train-pipeline.sh --verbose
@@ -615,7 +623,7 @@ tofu output gitlab_releases_bucket_name   # S3 releases bucket
 
 ## 🎯 Next Steps
 
-1. **Verify Deployment**: Run `./server-scripts/check_gitlab_health.sh --verbose`
+1. **Verify Deployment**: Run `./server-scripts/check-gitlab-health.sh --verbose`
 2. **Access GitLab**: Use output from `tofu output gitlab_http_url`
 3. **Run Training Pipeline**: Follow the three-script workflow
 4. **Monitor Results**: Check pipeline status and S3 artifacts

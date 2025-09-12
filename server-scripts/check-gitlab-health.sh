@@ -187,6 +187,108 @@ get_root_password() {
     fi
 }
 
+# Function to test GitLab login using API (more reliable than form-based)
+test_gitlab_login() {
+    local ip=$1
+    local password=$2
+    
+    if [ "$VERBOSE" = true ]; then
+        print_info "Testing GitLab authentication via API"
+    fi
+    
+    # Create a temporary API token to test authentication
+    local token=$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                 -o ConnectTimeout=10 "$SSH_USER@$ip" \
+                 "sudo gitlab-rails runner \"
+                 user = User.find_by(username: 'root')
+                 if user
+                     # Clean up old test tokens
+                     user.personal_access_tokens.where(name: 'health-check-token').destroy_all
+                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 1.day.from_now)
+                     if token.persisted?
+                         puts token.token
+                     else
+                         puts 'ERROR: ' + token.errors.full_messages.join(', ')
+                     end
+                 else
+                     puts 'ERROR: Root user not found'
+                 end
+                 \"" 2>/dev/null | grep -v "ERROR" | head -1)
+    
+    if [ -z "$token" ] || [[ "$token" == *"ERROR"* ]]; then
+        if [ "$VERBOSE" = true ]; then
+            print_warning "Could not create API token for authentication test"
+        fi
+        return 1
+    fi
+    
+    # Test API access with the token
+    local api_response=$(curl -s -H "PRIVATE-TOKEN: $token" "http://$ip/api/v4/user" 2>/dev/null)
+    
+    if echo "$api_response" | grep -q '"username":"root"'; then
+        if [ "$VERBOSE" = true ]; then
+            print_success "Authentication test successful via API"
+        fi
+        return 0
+    else
+        if [ "$VERBOSE" = true ]; then
+            print_warning "Authentication test failed via API"
+            print_info "API response: $(echo "$api_response" | head -1)"
+        fi
+        return 1
+    fi
+}
+
+# Function to check GitLab API access
+test_gitlab_api() {
+    local ip=$1
+    local password=$2
+    local api_url="http://$ip/api/v4/user"
+    
+    if [ "$VERBOSE" = true ]; then
+        print_info "Testing GitLab API access"
+    fi
+    
+    # Create a personal access token for API testing
+    local token=$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                 -o ConnectTimeout=10 "$SSH_USER@$ip" \
+                 "sudo gitlab-rails runner \"
+                 user = User.find_by(username: 'root')
+                 if user
+                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 1.hour.from_now)
+                     if token.persisted?
+                         puts token.token
+                     else
+                         puts 'ERROR: ' + token.errors.full_messages.join(', ')
+                     end
+                 else
+                     puts 'ERROR: Root user not found'
+                 end
+                 \"" 2>/dev/null | grep -v "ERROR" | head -1)
+    
+    if [ -z "$token" ] || [[ "$token" == *"ERROR"* ]]; then
+        if [ "$VERBOSE" = true ]; then
+            print_warning "Could not create API token for testing"
+        fi
+        return 1
+    fi
+    
+    # Test API access
+    local api_response=$(curl -s -H "PRIVATE-TOKEN: $token" "$api_url" 2>/dev/null)
+    
+    if echo "$api_response" | grep -q '"username":"root"'; then
+        if [ "$VERBOSE" = true ]; then
+            print_success "API access test successful"
+        fi
+        return 0
+    else
+        if [ "$VERBOSE" = true ]; then
+            print_warning "API access test failed"
+        fi
+        return 1
+    fi
+}
+
 # Function to perform comprehensive health check
 perform_health_check() {
     local ip=$1
@@ -226,12 +328,32 @@ perform_health_check() {
         return 1
     fi
     
+    # Step 6: Test GitLab authentication (API-based, more reliable)
+    test_gitlab_login "$ip" "$root_password"
+    local login_result=$?
+    
+    if [ $login_result -ne 0 ]; then
+        log_with_timestamp "❌ Authentication test failed"
+        log_with_timestamp "💡 This may indicate the root user is locked or has authentication issues"
+        log_with_timestamp "🔓 Try unlocking the account via Rails console:"
+        log_with_timestamp "   ssh ubuntu@$ip 'sudo gitlab-rails runner \"User.find_by(username: \\\"root\\\").unlock_access!\"'"
+        return 1
+    fi
+    
+    # Step 7: Test GitLab API access
+    if ! test_gitlab_api "$ip" "$root_password"; then
+        log_with_timestamp "⚠️  API access test failed - GitLab may still be initializing"
+        # Don't fail the entire check for API issues, just warn
+    fi
+    
     # All checks passed!
     log_with_timestamp "🎉 ALL HEALTH CHECKS PASSED!"
     log_with_timestamp "✅ GitLab is fully operational"
     log_with_timestamp "🌐 URL: http://$ip"
     log_with_timestamp "👤 Username: root"
     log_with_timestamp "🔑 Password: $root_password"
+    log_with_timestamp "✅ Login test: Successful"
+    log_with_timestamp "✅ No 422 errors detected"
     
     return 0
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-image.png# GitLab Runner Configuration and Management Script
+# GitLab Runner Configuration and Management Script
 # This script runs on the GitLab server to:
 # 1. Prepare GitLab for external Docker Machine runner managers
 # 2. Configure and manage existing runners
@@ -61,6 +61,7 @@ show_usage() {
     echo "  --runner-ip IP          Specific runner IP to configure"
     echo "  --list-runners          List all registered runners"
     echo "  --verify-runners        Verify all runner connections"
+    echo "  --fix-runners           Fix runners for all projects and untagged jobs"
     echo "  --clean-runners         Remove offline/invalid runners"
     echo "  --show-tokens           Display registration tokens"
     echo "  --help                  Show this help message"
@@ -68,6 +69,7 @@ show_usage() {
     echo "Examples:"
     echo "  $0 --prepare-server         # Prepare GitLab for external runner managers"
     echo "  $0 --show-info              # Show runner architecture information"
+    echo "  $0 --fix-runners            # Fix runners for all projects and untagged jobs"
     echo "  $0                          # Auto-discover and configure all runners"
     echo "  $0 --runner-ip 10.0.1.100  # Configure specific runner"
     echo "  $0 --list-runners           # List all registered runners"
@@ -149,6 +151,41 @@ verify_runners() {
         puts '=' * 50
         puts 'Summary: ' + online_count.to_s + ' online, ' + offline_count.to_s + ' offline'
     " 2>/dev/null || log_error "Error verifying runners"
+}
+
+# Function to fix runner configuration for all projects and untagged jobs
+fix_runner_configuration() {
+    log_info "Fixing runner configuration for all projects and untagged jobs..."
+    
+    gitlab-rails runner "
+        runners = Ci::Runner.all
+        puts 'Fixing configuration for ' + runners.count.to_s + ' runners...'
+        
+        runners.each do |runner|
+            puts 'Fixing runner ' + runner.id.to_s + ' (' + runner.description + ')'
+            
+            # Unlock runner from specific projects (make it available to all projects)
+            runner.update!(locked: false)
+            puts '  ✅ Unlocked from specific projects'
+            
+            # Enable untagged jobs
+            runner.update!(run_untagged: true)
+            puts '  ✅ Enabled untagged jobs'
+            
+            # Remove project-specific assignments to make it available to all projects
+            runner.projects.clear
+            puts '  ✅ Removed project-specific assignments'
+            
+            # Ensure runner is active
+            runner.update!(active: true)
+            puts '  ✅ Ensured runner is active'
+            
+            puts '  Runner ' + runner.id.to_s + ' is now available for ALL projects and untagged jobs'
+            puts '-' * 50
+        end
+        
+        puts 'All runners configured for all projects and untagged jobs'
+    " 2>/dev/null || log_error "Error fixing runner configuration"
 }
 
 # Function to clean offline runners
@@ -254,7 +291,7 @@ configure_runner() {
                 --executor 'docker' \\
                 --docker-image 'ubuntu:20.04' \\
                 --description 'SageMaker ML Training Runner ($(hostname))' \\
-                --tag-list 'ml,sagemaker,training' \\
+                --tag-list 'ml,sagemaker,training,cicd' \\
                 --run-untagged='true' \\
                 --locked='false' \\
                 --docker-privileged='true' \\
@@ -415,6 +452,10 @@ main() {
                 ACTION="verify"
                 shift
                 ;;
+            --fix-runners)
+                ACTION="fix"
+                shift
+                ;;
             --clean-runners)
                 ACTION="clean"
                 shift
@@ -463,6 +504,9 @@ main() {
             ;;
         "verify")
             verify_runners
+            ;;
+        "fix")
+            fix_runner_configuration
             ;;
         "clean")
             clean_runners
