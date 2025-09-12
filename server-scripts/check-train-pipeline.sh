@@ -33,6 +33,7 @@ QUICK_MODE=false
 CHECK_S3=true
 CHECK_SAGEMAKER=true
 CHECK_RUNNERS=true
+PASSED_GITLAB_TOKEN="" # New variable to store token passed as argument
 
 # Logging function
 log() {
@@ -160,7 +161,7 @@ verify_gitlab_access() {
     
     # Test HTTP connectivity with better error handling
     log_debug "Testing HTTP connectivity to $GITLAB_URL..."
-    HTTP_RESPONSE=$(curl -s --connect-timeout 15 --max-time 30 -w "%{http_code}" "$GITLAB_URL" 2>/dev/null | tail -n1)
+    HTTP_RESPONSE=$(curl -s -o /dev/null --connect-timeout 15 --max-time 30 -w "%{http_code}" "$GITLAB_URL" || echo "000")
     
     if [ "$HTTP_RESPONSE" = "200" ] || [ "$HTTP_RESPONSE" = "302" ]; then
         log_success "GitLab server is accessible (HTTP $HTTP_RESPONSE)"
@@ -198,20 +199,19 @@ verify_gitlab_access() {
 get_gitlab_token() {
     log_info "Getting GitLab access token..."
     
+    if [ -n "$PASSED_GITLAB_TOKEN" ]; then
+        GITLAB_TOKEN="$PASSED_GITLAB_TOKEN"
+        log_success "Using GitLab token provided as argument: ${GITLAB_TOKEN:0:20}..."
+        return 0
+    fi
+    
     # Try to get existing token with timeout
     log_debug "Checking for existing GitLab access tokens..."
-    GITLAB_TOKEN=$(timeout 30 ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"
-        begin
-            user = User.find_by(username: 'root')
-            if user
-                token = user.personal_access_tokens.active.where('expires_at > ?', Time.current).first
-                puts 'Token: ' + token.token if token
-            else
-                puts 'Error: Root user not found'
-            end
-        rescue => e
-            puts 'Error: ' + e.message
-        end\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
+    local SSH_COMMAND="sudo gitlab-rails runner \"begin; user = User.find_by(username: 'root'); if user; token = user.personal_access_tokens.active.where('expires_at > ?', Time.current).first; puts 'Token: ' + token.token if token; else; puts 'Error: Root user not found'; end; rescue => e; puts 'Error: ' + e.message; end\""
+    TOKEN_OUTPUT=$(timeout 30 ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "$SSH_COMMAND" 2>/dev/null || echo "")
+    
+    log_debug "SSH command output for existing token: $TOKEN_OUTPUT"
+    GITLAB_TOKEN=$(echo "$TOKEN_OUTPUT" | grep "Token:" | cut -d' ' -f2 || echo "")
     
     if [ -z "$GITLAB_TOKEN" ]; then
         log_warning "No active GitLab access token found"
@@ -222,26 +222,11 @@ get_gitlab_token() {
         TOKEN_NAME="pipeline-check-token-$TIMESTAMP"
         
         log_debug "Creating token: $TOKEN_NAME"
-        GITLAB_TOKEN=$(timeout 30 ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"
-            begin
-                user = User.find_by(username: 'root')
-                if user
-                    token = user.personal_access_tokens.create(
-                        scopes: ['api', 'read_user', 'read_repository'],
-                        name: '$TOKEN_NAME',
-                        expires_at: 1.hour.from_now
-                    )
-                    if token.persisted?
-                        puts 'Token: ' + token.token
-                    else
-                        puts 'Error: Token creation failed - ' + token.errors.full_messages.join(', ')
-                    end
-                else
-                    puts 'Error: Root user not found'
-                end
-            rescue => e
-                puts 'Error: ' + e.message
-            end\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
+        local CREATE_TOKEN_SSH_COMMAND="sudo gitlab-rails runner \"begin; user = User.find_by(username: 'root'); if user; token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository'], name: '$TOKEN_NAME', expires_at: 1.hour.from_now); if token.persisted?; puts 'Token: ' + token.token; else; puts 'Error: Token creation failed - ' + token.errors.full_messages.join(', '); end; else; puts 'Error: Root user not found'; end; rescue => e; puts 'Error: ' + e.message; end\""
+        CREATE_TOKEN_OUTPUT=$(timeout 30 ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "$CREATE_TOKEN_SSH_COMMAND" 2>/dev/null || echo "")
+        
+        log_debug "SSH command output for new token: $CREATE_TOKEN_OUTPUT"
+        GITLAB_TOKEN=$(echo "$CREATE_TOKEN_OUTPUT" | grep "Token:" | cut -d' ' -f2 || echo "")
         
         if [ -z "$GITLAB_TOKEN" ]; then
             log_error "Failed to create GitLab access token"
@@ -341,11 +326,20 @@ check_gitlab_runners() {
         
         # Check runner configuration for common issues
         RUNNER_CONFIG=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo cat /etc/gitlab-runner/config.toml" 2>/dev/null || echo "")
+        log_debug "GitLab runner config.toml content:
+$RUNNER_CONFIG"
         
         if [ -n "$RUNNER_CONFIG" ]; then
             # Check for run_untagged configuration
-            if ! echo "$RUNNER_CONFIG" | grep -q "run_untagged = true"; then
+            if ! echo "$RUNNER_CONFIG" | grep -E "^\[\[runners\]\].*run_untagged = true" &>/dev/null; then
                 log_error "RUNNER CONFIGURATION ISSUE: Runners missing 'run_untagged = true' - jobs will be stuck!"
+                log_info "Fix: Add 'run_untagged = true' and 'locked = false' to each runner in config.toml"
+                return 1
+            fi
+            
+            # Check for locked configuration
+            if ! echo "$RUNNER_CONFIG" | grep -E "^\[\[runners\]\].*locked = false" &>/dev/null; then
+                log_error "RUNNER CONFIGURATION ISSUE: Runners are 'locked = true' - jobs will be stuck!"
                 log_info "Fix: Add 'run_untagged = true' and 'locked = false' to each runner in config.toml"
                 return 1
             fi
@@ -437,6 +431,8 @@ check_cicd_variables() {
     # Get project variables
     VARIABLES_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/variables" 2>/dev/null || echo "")
     
+    log_debug "Raw CI/CD variables API response: $VARIABLES_RESPONSE"
+    
     if [ -z "$VARIABLES_RESPONSE" ]; then
         log_error "Failed to retrieve CI/CD variables"
         return 1
@@ -469,22 +465,53 @@ check_cicd_variables() {
     return 0
 }
 
-# Function to check for YAML configuration errors
+# Function to get GitLab CI/CD YAML content
+get_gitlab_ci_content() {
+    log_info "Attempting to retrieve .gitlab-ci.yml content from GitLab API..."
+    GITLAB_CI_CONTENT=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml/raw?ref=main")
+    
+    if echo "$GITLAB_CI_CONTENT" | grep -q "404"; then
+        log_error "Failed to get .gitlab-ci.yml content from GitLab API (404 Not Found or similar). Response: $GITLAB_CI_CONTENT"
+        GITLAB_CI_CONTENT="" # Clear content if 404
+        return 1
+    fi
+    
+    if [ -z "$GITLAB_CI_CONTENT" ]; then
+        log_error "Retrieved empty .gitlab-ci.yml content."
+        return 1
+    fi
+    log_success "Successfully retrieved .gitlab-ci.yml content."
+    return 0
+}
+
+# Function to check GitLab CI/CD YAML configuration
 check_yaml_configuration() {
     log_info "Checking GitLab CI/CD YAML configuration..."
     
+    # Get the GitLab CI/CD content first
+    if ! get_gitlab_ci_content; then
+        log_warning "Cannot check YAML configuration without .gitlab-ci.yml content."
+        return 1
+    fi
+    
     # Try to lint the YAML configuration via API
     LINT_RESPONSE=$(curl -s -X POST -H "PRIVATE-TOKEN: $GITLAB_TOKEN" -H "Content-Type: application/json" \
-        --data '{"content": ""}' "$GITLAB_URL/api/v4/projects/$PROJECT_ID/ci/lint" 2>/dev/null || echo "")
+        --data '{"content": "'$(echo "$GITLAB_CI_CONTENT" | sed 's/\n/\\n/g' | sed 's/"/\"/g')'"}' "$GITLAB_URL/api/v4/projects/$PROJECT_ID/ci/lint" 2>/dev/null || echo "")
     
-    # Also check for common YAML configuration issues by getting project files
-    GITLAB_CI_CONTENT=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        "$GITLAB_URL/api/v4/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml/raw?ref=master" 2>/dev/null || \
-        curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        "$GITLAB_URL/api/v4/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml/raw?ref=main" 2>/dev/null || echo "")
+    if [ -n "$LINT_RESPONSE" ] && echo "$LINT_RESPONSE" | grep -q '"status":"valid"'; then
+        log_success "GitLab CI/CD YAML configuration is valid."
+    else
+        log_error "GitLab CI/CD YAML configuration is NOT valid."
+        if [ -n "$LINT_RESPONSE" ]; then
+            log_debug "Linting errors: $LINT_RESPONSE"
+        fi
+        # Continue with other checks, but mark as error
+    fi
     
     if [ -n "$GITLAB_CI_CONTENT" ]; then
         log_success "Found .gitlab-ci.yml file in repository"
+        log_debug ".gitlab-ci.yml content:
+$GITLAB_CI_CONTENT"
         log_debug "Checking for common YAML issues..."
         
         # Check for common YAML syntax issues that cause "nested array" errors
@@ -504,7 +531,7 @@ check_yaml_configuration() {
         fi
         
         # Check for missing stages
-        if ! echo "$GITLAB_CI_CONTENT" | grep -q "stages:"; then
+        if ! echo "$GITLAB_CI_CONTENT" | grep -qE "^stages:"; then
             log_warning "No 'stages' section found in .gitlab-ci.yml"
         fi
         
@@ -898,6 +925,8 @@ check_project_repository() {
     # Get repository information
     REPO_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID/repository/tree" 2>/dev/null || echo "")
     
+    log_debug "Raw repository tree API response: $REPO_RESPONSE"
+    
     if [ -z "$REPO_RESPONSE" ]; then
         log_error "Failed to retrieve repository information"
         return 1
@@ -1090,6 +1119,10 @@ main() {
             --verbose)
                 VERBOSE=true
                 shift
+                ;;
+            --gitlab-token)
+                PASSED_GITLAB_TOKEN="$2"
+                shift 2
                 ;;
             --help)
                 show_usage

@@ -12,6 +12,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m' # Define PURPLE
+CYAN='\033[0;36m'   # Define CYAN
 NC='\033[0m' # No Color
 
 # Configuration
@@ -27,6 +29,7 @@ PROJECT_NAME=""
 PUSHED_COMMIT_HASH=""
 PUSHED_TIMESTAMP=""
 BRANCH_NAME=""
+VERBOSE=true # Enable verbose logging for debugging
 
 # Logging function
 log() {
@@ -47,6 +50,12 @@ log_warning() {
 
 log_error() {
     log "${RED}ERROR${NC}: $1"
+}
+
+log_debug() {
+    if [ "$VERBOSE" = true ]; then
+        log "${PURPLE}DEBUG${NC}: $1"
+    fi
 }
 
 # Error handling
@@ -80,10 +89,16 @@ setup_code_repository() {
     fi
     
     # Copy CI/CD configuration
-    if [ -f ".gitlab-ci.yml" ]; then
-        cp .gitlab-ci.yml "$TEMP_REPO_DIR/"
+    log_debug "Attempting to copy .gitlab-ci.yml from $PROJECT_ROOT/.gitlab-ci.yml to $TEMP_REPO_DIR/"
+    if [ -f "$PROJECT_ROOT/.gitlab-ci.yml" ]; then
+        cp "$PROJECT_ROOT/.gitlab-ci.yml" "$TEMP_REPO_DIR/"
         log_success "Copied CI/CD configuration"
+    else
+        log_error ".gitlab-ci.yml not found in $PROJECT_ROOT"
+        return 1
     fi
+    log_debug ".gitlab-ci.yml content in TEMP_REPO_DIR:"
+    log_debug "$(cat "$TEMP_REPO_DIR/.gitlab-ci.yml" 2>/dev/null || echo 'File not found')"
     
     # Copy source code if exists
     if [ -d "src" ]; then
@@ -169,84 +184,44 @@ EOF
     ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g; s|!|%21|g')
     GITLAB_REPO_URL="http://root:$ENCODED_PASSWORD@$GITLAB_IP/root/$PROJECT_NAME.git"
     
-    # Check if repository already exists and clone it instead of force pushing
-    log_info "Checking if repository already exists..."
-    if git ls-remote "$GITLAB_REPO_URL" &>/dev/null; then
-        log_info "Repository exists, cloning and updating instead of force pushing"
-        
-        # Clone the existing repository
-        git clone "$GITLAB_REPO_URL" "$TEMP_REPO_DIR-existing"
-        cd "$TEMP_REPO_DIR-existing"
-        
-        # Copy our new files over the existing ones
-        cp -r "$TEMP_REPO_DIR"/* .
-        
-        # Add all new files
-        git add .
-        
-        # Create commit with unique message including random file content to ensure uniqueness
-        echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
-        git add ".pipeline-trigger-$COMMIT_HASH"
-        
-        git commit -m "Training pipeline update - $TIMESTAMP
-
-- Updated training scripts for pipeline execution  
-- Commit hash: $COMMIT_HASH
-- Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')
-- Pipeline trigger: automated deployment
-- Build trigger file: .pipeline-trigger-$COMMIT_HASH"
-        
-        # Push to main branch (regular push, not force)
-        log_info "Pushing to GitLab main branch"
-        if git push origin main; then
-            log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH)"
-        else
-            log_error "Failed to push training scripts to GitLab"
-            return 1
-        fi
-        
-        # Cleanup
-        cd "$PROJECT_ROOT"
-        rm -rf "$TEMP_REPO_DIR-existing"
+    # Always create new repository to avoid conflicts with existing cloned repo
+    log_info "Creating new repository content for push..."
+    
+    # Set up GitLab remote with root user authentication
+    git remote add origin "$GITLAB_REPO_URL"
+    log_success "GitLab authentication configured with root user"
+    
+    # Push directly to main branch to trigger pipelines
+    BRANCH_NAME="main"
+    
+    log_debug "Files in temporary repository before git add:
+$(ls -la)"
+    log_info "Pushing directly to main branch to trigger pipeline"
+    
+    # Switch to main branch
+    git checkout -b "$BRANCH_NAME"
+    
+    # Add all new files
+    git add ./.gitlab-ci.yml
+    git add .
+    log_debug "Git status after git add:
+$(git status)"
+    
+    # Create commit with unique message including random file content to ensure uniqueness
+    echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
+    git add ".pipeline-trigger-$COMMIT_HASH"
+    
+    git commit -m "Training pipeline update - $TIMESTAMP"
+    log_debug "Git status after git commit:
+$(git status)"
+    
+    # Push to main branch (regular push for new repository)
+    log_info "Pushing to GitLab main branch: $BRANCH_NAME"
+    if git push --force origin "$BRANCH_NAME"; then
+        log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
     else
-        log_info "Repository doesn't exist, creating new repository"
-        
-        # Set up GitLab remote with root user authentication
-        git remote add origin "$GITLAB_REPO_URL"
-        log_success "GitLab authentication configured with root user"
-        
-        # Push directly to main branch to trigger pipelines
-        BRANCH_NAME="main"
-        
-        log_info "Pushing directly to main branch to trigger pipeline"
-        
-        # Switch to main branch
-        git checkout -b "$BRANCH_NAME"
-        
-        # Add all new files
-        git add .
-        
-        # Create commit with unique message including random file content to ensure uniqueness
-        echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
-        git add ".pipeline-trigger-$COMMIT_HASH"
-        
-        git commit -m "Training pipeline update - $TIMESTAMP
-
-- Updated training scripts for pipeline execution  
-- Commit hash: $COMMIT_HASH
-- Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')
-- Pipeline trigger: automated deployment
-- Build trigger file: .pipeline-trigger-$COMMIT_HASH
-- Branch: $BRANCH_NAME"
-        
-        # Push to main branch (regular push for new repository)
-        log_info "Pushing to GitLab main branch: $BRANCH_NAME"
-        if git push origin "$BRANCH_NAME"; then
-            log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
-        else
-            log_error "Failed to push training scripts to GitLab"
-            return 1
-        fi
+        log_error "Failed to push training scripts to GitLab"
+        return 1
     fi
     
     # Store commit info for summary (make variables global for monitor function)
