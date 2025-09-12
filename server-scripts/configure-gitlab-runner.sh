@@ -259,7 +259,7 @@ configure_runner() {
     log_info "Configuring GitLab runner at IP: $runner_ip"
     
     # Test SSH connectivity
-    if ! ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$runner_ip "echo 'SSH test successful'" 2>/dev/null; then
+    if ! ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$runner_ip "echo 'SSH test successful'" 2>/dev/null; then
         log_error "Cannot connect to runner at $runner_ip via SSH"
         return 1
     fi
@@ -278,7 +278,7 @@ configure_runner() {
     log_info "Sending registration token to runner..."
     
     # Send configuration command to runner
-    ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$runner_ip "
+    ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$runner_ip "
         echo 'Configuring GitLab Runner with provided token...'
         
         # Re-register the runner if needed

@@ -158,36 +158,79 @@ EOF
     
     # Get GitLab root password for authentication
     log_info "Retrieving GitLab root password for authentication..."
-    GITLAB_ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | awk '{print \$2}'" 2>/dev/null)
+    GITLAB_ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | awk '{print \$2}'" 2>/dev/null)
     
     if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
         log_error "Could not retrieve GitLab root password"
         return 1
     fi
     
-    # Set up GitLab remote with root user authentication
     # URL encode the password to handle special characters
-    ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g')
+    ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g; s|!|%21|g')
     GITLAB_REPO_URL="http://root:$ENCODED_PASSWORD@$GITLAB_IP/root/$PROJECT_NAME.git"
-    git remote add origin "$GITLAB_REPO_URL"
-    log_success "GitLab authentication configured with root user"
     
-    # Push directly to main branch to trigger pipelines
-    BRANCH_NAME="main"
-    
-    log_info "Pushing directly to main branch to trigger pipeline"
-    
-    # Switch to main branch
-    git checkout -b "$BRANCH_NAME"
-    
-    # Add all new files
-    git add .
-    
-    # Create commit with unique message including random file content to ensure uniqueness
-    echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
-    git add ".pipeline-trigger-$COMMIT_HASH"
-    
-    git commit -m "Training pipeline update - $TIMESTAMP
+    # Check if repository already exists and clone it instead of force pushing
+    log_info "Checking if repository already exists..."
+    if git ls-remote "$GITLAB_REPO_URL" &>/dev/null; then
+        log_info "Repository exists, cloning and updating instead of force pushing"
+        
+        # Clone the existing repository
+        git clone "$GITLAB_REPO_URL" "$TEMP_REPO_DIR-existing"
+        cd "$TEMP_REPO_DIR-existing"
+        
+        # Copy our new files over the existing ones
+        cp -r "$TEMP_REPO_DIR"/* .
+        
+        # Add all new files
+        git add .
+        
+        # Create commit with unique message including random file content to ensure uniqueness
+        echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
+        git add ".pipeline-trigger-$COMMIT_HASH"
+        
+        git commit -m "Training pipeline update - $TIMESTAMP
+
+- Updated training scripts for pipeline execution  
+- Commit hash: $COMMIT_HASH
+- Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')
+- Pipeline trigger: automated deployment
+- Build trigger file: .pipeline-trigger-$COMMIT_HASH"
+        
+        # Push to main branch (regular push, not force)
+        log_info "Pushing to GitLab main branch"
+        if git push origin main; then
+            log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH)"
+        else
+            log_error "Failed to push training scripts to GitLab"
+            return 1
+        fi
+        
+        # Cleanup
+        cd "$PROJECT_ROOT"
+        rm -rf "$TEMP_REPO_DIR-existing"
+    else
+        log_info "Repository doesn't exist, creating new repository"
+        
+        # Set up GitLab remote with root user authentication
+        git remote add origin "$GITLAB_REPO_URL"
+        log_success "GitLab authentication configured with root user"
+        
+        # Push directly to main branch to trigger pipelines
+        BRANCH_NAME="main"
+        
+        log_info "Pushing directly to main branch to trigger pipeline"
+        
+        # Switch to main branch
+        git checkout -b "$BRANCH_NAME"
+        
+        # Add all new files
+        git add .
+        
+        # Create commit with unique message including random file content to ensure uniqueness
+        echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
+        git add ".pipeline-trigger-$COMMIT_HASH"
+        
+        git commit -m "Training pipeline update - $TIMESTAMP
 
 - Updated training scripts for pipeline execution  
 - Commit hash: $COMMIT_HASH
@@ -195,14 +238,15 @@ EOF
 - Pipeline trigger: automated deployment
 - Build trigger file: .pipeline-trigger-$COMMIT_HASH
 - Branch: $BRANCH_NAME"
-    
-    # Push to main branch (force push to overwrite repository)
-    log_info "Pushing to GitLab main branch: $BRANCH_NAME"
-    if git push -f origin "$BRANCH_NAME"; then
-        log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
-    else
-        log_error "Failed to push training scripts to GitLab"
-        return 1
+        
+        # Push to main branch (regular push for new repository)
+        log_info "Pushing to GitLab main branch: $BRANCH_NAME"
+        if git push origin "$BRANCH_NAME"; then
+            log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+        else
+            log_error "Failed to push training scripts to GitLab"
+            return 1
+        fi
     fi
     
     # Store commit info for summary (make variables global for monitor function)
@@ -224,7 +268,7 @@ get_fresh_gitlab_token() {
     TIMESTAMP=$(date +%s)
     TOKEN_NAME="pipeline-monitor-token-$TIMESTAMP"
     
-    FRESH_TOKEN=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"
+    FRESH_TOKEN=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"
         user = User.find_by(username: 'root')
         if user
             token = user.personal_access_tokens.create(

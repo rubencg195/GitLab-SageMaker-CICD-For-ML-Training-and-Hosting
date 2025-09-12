@@ -64,6 +64,7 @@ echo "$(date): Docker installation completed"
 echo "$(date): Installing GitLab Runner..."
 curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | bash
 apt-get install -y gitlab-runner
+usermod -aG gitlab-runner ubuntu
 
 echo "$(date): GitLab Runner installation completed"
 
@@ -125,8 +126,8 @@ get_registration_token() {
 }
 
 # Get AWS credentials for runner configuration
-AWS_ACCESS_KEY_ID=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/) | jq -r .AccessKeyId)
-AWS_SECRET_ACCESS_KEY=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/) | jq -r .SecretAccessKey)
+export AWS_ACCESS_KEY_ID=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/) | jq -r .AccessKeyId)
+export AWS_SECRET_ACCESS_KEY=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/) | jq -r .SecretAccessKey)
 
 echo "$(date): Registering GitLab Runner with docker+machine executor..."
 
@@ -299,35 +300,8 @@ EOF
     -s
 
 # Create health check script
-cat > /usr/local/bin/runner-manager-health-check.sh << 'EOF'
-#!/bin/bash
-# Health check for GitLab Runner Manager
-
-echo "=== GitLab Runner Manager Health Check ==="
-echo "Date: $(date)"
-echo ""
-
-echo "Runner Status:"
-gitlab-runner status
-
-echo ""
-echo "Runner List:"
-gitlab-runner list
-
-echo ""
-echo "Docker Machine List:"
-docker-machine ls 2>/dev/null || echo "No machines found"
-
-echo ""
-echo "System Resources:"
-echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%"
-echo "Memory Usage: $(free | grep Mem | awk '{printf("%.1f%%", $3/$2 * 100.0)}')"
-echo "Disk Usage: $(df -h / | awk 'NR==2{printf "%s", $5}')"
-
-echo ""
-echo "=== Health Check Complete ==="
-EOF
-
+# Instead of embedding, we'll cat the content of the local health check script
+cat /opt/gitlab-scripts/runner-manager-health-check.sh > /usr/local/bin/runner-manager-health-check.sh
 chmod +x /usr/local/bin/runner-manager-health-check.sh
 
 # Set up cron job for health checks

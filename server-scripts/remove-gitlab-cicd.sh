@@ -112,7 +112,7 @@ verify_gitlab_access() {
     fi
     
     # Test SSH connectivity
-    if ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "echo 'SSH test'" &> /dev/null; then
+    if ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "echo 'SSH test'" &> /dev/null; then
         log_success "SSH connectivity to GitLab server verified"
     else
         error_exit "SSH connectivity to GitLab server failed"
@@ -126,7 +126,7 @@ get_access_token() {
     # Try to get existing token from GitLab server
     GITLAB_TOKEN=""
     set +e  # Temporarily disable exit on error for this operation
-    GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.active.first; puts 'Token: ' + token.token if token\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
+    GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.active.first; puts 'Token: ' + token.token if token\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
     set -e  # Re-enable exit on error
     
     # If no existing token, create a new one
@@ -134,7 +134,7 @@ get_access_token() {
         log_info "No existing token found. Creating new GitLab access token for cleanup..."
         TIMESTAMP=$(date +%s)
         set +e  # Temporarily disable exit on error for this operation
-        GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository', 'write_repository'], name: 'cleanup-token-$TIMESTAMP', expires_at: 1.day.from_now); puts 'Token: ' + token.token if token.persisted?; puts 'Errors: ' + token.errors.full_messages.join(', ') unless token.persisted?\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
+        GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository', 'write_repository'], name: 'cleanup-token-$TIMESTAMP', expires_at: 1.day.from_now); puts 'Token: ' + token.token if token.persisted?; puts 'Errors: ' + token.errors.full_messages.join(', ') unless token.persisted?\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
         set -e  # Re-enable exit on error
     else
         log_info "Using existing GitLab access token"
@@ -147,6 +147,22 @@ get_access_token() {
     log_success "GitLab access token obtained: ${GITLAB_TOKEN:0:20}..."
 }
 
+empty_s3_bucket() {
+    local bucket_name=$1
+    if aws s3 ls "s3://${bucket_name}" 2>/dev/null; then
+        log_info "Emptying S3 bucket: ${bucket_name}"
+        if aws s3 rm "s3://${bucket_name}/" --recursive;
+        then
+            log_success "S3 bucket ${bucket_name} emptied."
+        else
+            log_error "Failed to empty S3 bucket: ${bucket_name}"
+            return 1
+        fi
+    else
+        log_info "S3 bucket ${bucket_name} does not exist or is already empty."
+    fi
+}
+
 # Function to clean up S3 buckets
 cleanup_s3_buckets() {
     log_info "Cleaning up S3 buckets..."
@@ -155,45 +171,8 @@ cleanup_s3_buckets() {
     ARTIFACTS_BUCKET=$(tofu output -raw gitlab_artifacts_bucket_name 2>/dev/null)
     RELEASES_BUCKET=$(tofu output -raw gitlab_releases_bucket_name 2>/dev/null)
     
-    # Clean artifacts bucket
-    if [ -n "$ARTIFACTS_BUCKET" ]; then
-        set +e  # Temporarily disable exit on error
-        if aws s3api head-bucket --bucket "$ARTIFACTS_BUCKET" &>/dev/null; then
-            log_info "Cleaning artifacts bucket: $ARTIFACTS_BUCKET"
-            OBJECTS_COUNT=$(aws s3 ls "s3://$ARTIFACTS_BUCKET" --recursive 2>/dev/null | wc -l || echo "0")
-            if [ "$OBJECTS_COUNT" -gt "0" ]; then
-                aws s3 rm "s3://$ARTIFACTS_BUCKET" --recursive --quiet 2>/dev/null
-                log_success "Artifacts bucket cleaned: $ARTIFACTS_BUCKET ($OBJECTS_COUNT objects removed)"
-            else
-                log_success "Artifacts bucket already empty: $ARTIFACTS_BUCKET"
-            fi
-        else
-            log_info "Artifacts bucket not accessible or doesn't exist: $ARTIFACTS_BUCKET"
-        fi
-        set -e  # Re-enable exit on error
-    else
-        log_info "No artifacts bucket configured"
-    fi
-    
-    # Clean releases bucket
-    if [ -n "$RELEASES_BUCKET" ]; then
-        set +e  # Temporarily disable exit on error
-        if aws s3api head-bucket --bucket "$RELEASES_BUCKET" &>/dev/null; then
-            log_info "Cleaning releases bucket: $RELEASES_BUCKET"
-            OBJECTS_COUNT=$(aws s3 ls "s3://$RELEASES_BUCKET" --recursive 2>/dev/null | wc -l || echo "0")
-            if [ "$OBJECTS_COUNT" -gt "0" ]; then
-                aws s3 rm "s3://$RELEASES_BUCKET" --recursive --quiet 2>/dev/null
-                log_success "Releases bucket cleaned: $RELEASES_BUCKET ($OBJECTS_COUNT objects removed)"
-            else
-                log_success "Releases bucket already empty: $RELEASES_BUCKET"
-            fi
-        else
-            log_info "Releases bucket not accessible or doesn't exist: $RELEASES_BUCKET"
-        fi
-        set -e  # Re-enable exit on error
-    else
-        log_info "No releases bucket configured"
-    fi
+    empty_s3_bucket "$ARTIFACTS_BUCKET"
+    empty_s3_bucket "$RELEASES_BUCKET"
 }
 
 # Function to remove all GitLab projects
@@ -232,15 +211,15 @@ remove_all_runners() {
     log_info "Removing all GitLab runners..."
     
     # Get all runners on the GitLab server
-    if ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "command -v gitlab-runner" &> /dev/null; then
+    if ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "command -v gitlab-runner" &> /dev/null; then
         # List and remove all registered runners
-        RUNNERS=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner list 2>/dev/null | grep 'Executor:' || echo 'no-runners'")
+        RUNNERS=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-runner list 2>/dev/null | grep 'Executor:' || echo 'no-runners'")
         
         if [ "$RUNNERS" = "no-runners" ] || [ -z "$RUNNERS" ]; then
             log_success "No GitLab runners found to remove"
         else
             log_info "Unregistering all GitLab runners..."
-            ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+            ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "
                 sudo gitlab-runner stop
                 sudo gitlab-runner unregister --all-runners
                 sudo systemctl disable gitlab-runner
@@ -258,7 +237,7 @@ remove_access_tokens() {
     
     # Remove all access tokens via Rails console (simplified approach that works)
     set +e  # Temporarily disable exit on error
-    ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"User.find_by(username: 'root').personal_access_tokens.delete_all; puts 'Tokens deleted'\"" 2>/dev/null || log_info "Token cleanup completed or no tokens found"
+    ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"User.find_by(username: 'root').personal_access_tokens.delete_all; puts 'Tokens deleted'\"" 2>/dev/null || log_info "Token cleanup completed or no tokens found"
     set -e  # Re-enable exit on error
     
     log_success "Personal access tokens removed"
@@ -301,7 +280,7 @@ reset_gitlab_to_fresh_state() {
     
     # Reset GitLab to fresh state (simplified working approach)
     set +e  # Temporarily disable exit on error
-    ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+    ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "
         sudo gitlab-ctl stop
         sudo gitlab-ctl reconfigure
         sudo gitlab-ctl start
@@ -343,14 +322,14 @@ verify_clean_state() {
     set +e  # Temporarily disable exit on error
     
     # Verify initial root password file exists (fresh installation indicator)
-    if ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo test -f /etc/gitlab/initial_root_password" 2>/dev/null; then
+    if ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo test -f /etc/gitlab/initial_root_password" 2>/dev/null; then
         log_success "Initial root password file exists (fresh installation confirmed)"
     else
         log_warning "Initial root password file not found"
     fi
     
     # Check GitLab services are running
-    SERVICES_STATUS=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-ctl status" 2>/dev/null | grep -c "^run:" || echo "0")
+    SERVICES_STATUS=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-ctl status" 2>/dev/null | grep -c "^run:" || echo "0")
     if [ "$SERVICES_STATUS" -gt "0" ]; then
         log_success "GitLab services running: $SERVICES_STATUS"
     else
@@ -358,7 +337,7 @@ verify_clean_state() {
     fi
     
     # Check for runners
-    RUNNERS_EXIST=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner list 2>/dev/null | grep -c 'Executor:' || echo 0")
+    RUNNERS_EXIST=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-runner list 2>/dev/null | grep -c 'Executor:' || echo 0")
     if [ "$RUNNERS_EXIST" -eq "0" ]; then
         log_success "No GitLab runners registered"
     else

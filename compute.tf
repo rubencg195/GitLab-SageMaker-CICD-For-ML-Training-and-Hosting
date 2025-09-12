@@ -35,24 +35,7 @@ echo "Starting GitLab installation bootstrap at $(date)"
 # Create directory for scripts
 mkdir -p /opt/gitlab-scripts
 
-# Download the installation script (we'll use a copy via file provisioner)
-# For now, create a minimal script that will be replaced by provisioner
-cat > /tmp/install-gitlab.sh << 'SCRIPT'
-#!/bin/bash
-echo "Waiting for full installation script to be copied..."
-sleep 30
-if [ -f /opt/gitlab-scripts/gitlab-install.sh ]; then
-    chmod +x /opt/gitlab-scripts/gitlab-install.sh
-    export GITLAB_USERNAME="${local.gitlab_username}"
-    export GITLAB_PASSWORD="${local.gitlab_password}"
-    bash /opt/gitlab-scripts/gitlab-install.sh
-else
-    echo "Installation script not found, will retry..."
-fi
-SCRIPT
-
-chmod +x /tmp/install-gitlab.sh
-/tmp/install-gitlab.sh &
+# The actual installation will be handled by the Terraform remote-exec provisioner
 echo "Bootstrap completed at $(date)"
 EOF
   )
@@ -62,8 +45,8 @@ EOF
   # Copy the full installation script and execute it
   provisioner "file" {
     source      = "server-scripts/gitlab-install.sh"
-    destination = "/opt/gitlab-scripts/gitlab-install.sh"
-    
+    destination = "/tmp/gitlab-install.sh"
+
     connection {
       type        = "ssh"
       user        = "ubuntu"
@@ -74,15 +57,15 @@ EOF
 
   provisioner "remote-exec" {
     inline = [
+      "sudo mkdir -p /opt/gitlab-scripts",
+      "sudo mv /tmp/gitlab-install.sh /opt/gitlab-scripts/gitlab-install.sh",
       "sudo chmod +x /opt/gitlab-scripts/gitlab-install.sh",
-      "export GITLAB_USERNAME='${local.gitlab_username}'",
-      "export GITLAB_PASSWORD='${local.gitlab_password}'", 
-      "sudo -E bash /opt/gitlab-scripts/gitlab-install.sh"
+      "sudo /opt/gitlab-scripts/gitlab-install.sh"
     ]
-    
+
     connection {
       type        = "ssh"
-      user        = "ubuntu" 
+      user        = "ubuntu"
       private_key = file("~/.ssh/id_rsa")
       host        = self.public_ip
     }

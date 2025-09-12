@@ -288,6 +288,7 @@ resource "aws_instance" "gitlab_runner_manager" {
     vpc_id                       = aws_vpc.gitlab_vpc.id
     subnet_id                    = aws_subnet.private_subnets[0].id
     aws_region                   = local.aws_region
+    script_dir                   = "/opt/gitlab-scripts" # Set script_dir to the remote path where scripts will be copied
   }))
 
   root_block_device {
@@ -300,6 +301,34 @@ resource "aws_instance" "gitlab_runner_manager" {
     Name        = "GitLab Runner Manager"
     Purpose     = "gitlab-runner-manager"
     Environment = "ml-training"
+  }
+
+  provisioner "file" {
+    source      = "server-scripts/runner-manager-health-check.sh"
+    destination = "/tmp/runner-manager-health-check.sh"
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/id_rsa")
+      host        = self.public_ip
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo mkdir -p /opt/gitlab-scripts",
+      "sudo mv /tmp/runner-manager-health-check.sh /opt/gitlab-scripts/runner-manager-health-check.sh",
+      "sudo chmod +x /opt/gitlab-scripts/runner-manager-health-check.sh",
+      "/opt/gitlab-scripts/runner-manager-health-check.sh"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("~/.ssh/id_rsa")
+      host        = self.public_ip
+    }
   }
 }
 

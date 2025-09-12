@@ -97,12 +97,27 @@ echo "yes" | ./server-scripts/remove-gitlab-cicd.sh
 ./server-scripts/launch-train-job.sh [GITLAB_IP] [GITLAB_URL] [TOKEN] [PROJECT_ID] [PROJECT_NAME]
 ```
 
+**Parameters:**
+- `GITLAB_IP`: GitLab server IP address (e.g., `34.228.48.181`)
+- `GITLAB_URL`: GitLab server URL (e.g., `http://34.228.48.181`)
+- `TOKEN`: GitLab access token (provided by configure script)
+- `PROJECT_ID`: GitLab project ID (provided by configure script)
+- `PROJECT_NAME`: GitLab project name (e.g., `training-job-cicd-demo`)
+
+**What the script does:**
+- ✅ Creates a temporary repository with training scripts
+- ✅ Clones existing GitLab repository (if it exists) or creates new one
+- ✅ Updates repository with latest training code and CI/CD configuration
+- ✅ Pushes changes to trigger new pipeline execution
+- ✅ Monitors pipeline creation and provides status updates
+- ✅ Generates unique commit hashes for each run to ensure new pipelines
+
 **Example Complete Workflow:**
 ```bash
 # Complete cycle
 echo "yes" | ./server-scripts/remove-gitlab-cicd.sh  # Clean slate
 ./server-scripts/configure-gitlab-cicd                # Setup infrastructure  
-./server-scripts/launch-train-job.sh 34.228.48.181 http://34.228.48.181 [TOKEN] 6 training-job-cicd-demo
+./server-scripts/launch-train-job.sh 34.228.48.181 http://34.228.48.181 glpat-xxxxx 8 training-job-cicd-demo
 ```
 
 ## 🔧 Script Architecture Details
@@ -308,6 +323,22 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 - Check runner status: `ssh ubuntu@[IP] "sudo gitlab-runner status"`
 - Re-run configure script: `./server-scripts/configure-gitlab-cicd`
 - Verify runner token and registration
+
+#### 5. GitLab Runner Dependencies Missing
+**Symptoms**: Pipeline fails with `pip: command not found` or similar dependency errors
+**Solutions**:
+- Install Python and pip on GitLab runner: `sudo apt update && sudo apt install -y python3 python3-pip`
+- Update runner configuration to include dependency installation
+- Use Docker executor instead of shell executor for better isolation
+- Check runner environment setup in `/etc/gitlab-runner/config.toml`
+
+#### 6. Pipeline Not Triggering
+**Symptoms**: No pipelines appear after pushing code
+**Solutions**:
+- Verify `.gitlab-ci.yml` file exists in repository root
+- Check GitLab project CI/CD settings are enabled
+- Ensure runners are configured with `run_untagged = true`
+- Verify GitLab runner is running and connected
 
 ### Debug Commands
 ```bash

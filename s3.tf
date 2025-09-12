@@ -3,14 +3,19 @@
 
 # S3 Bucket for storing CI/CD artifacts
 resource "aws_s3_bucket" "gitlab_artifacts" {
-  bucket = "${local.project_name}-${local.environment}-artifacts-${random_id.bucket_suffix.hex}"
-  
-  tags = merge(local.common_tags, {
-    Name        = "${local.project_name}-artifacts-bucket"
-    Role        = "gitlab-artifacts-storage"
+  bucket = "gitlab-server-production-artifacts-${random_id.bucket_suffix.hex}"
+  force_destroy = true # Enable force destroy to clean up bucket contents on destroy
+
+  tags = {
     Application = "gitlab-cicd"
+    Project     = "gitlab-server"
+    Role        = "gitlab-artifacts-storage"
+    Environment = "production"
+    ManagedBy   = "terraform"
+    Owner       = "devops-team"
+    Name        = "gitlab-server-artifacts-bucket"
     Purpose     = "ci-cd-artifacts"
-  })
+  }
 }
 
 # Random suffix for unique bucket name
@@ -157,14 +162,19 @@ resource "aws_s3_bucket_cors_configuration" "gitlab_artifacts" {
 
 # S3 Bucket for storing release notes and metadata
 resource "aws_s3_bucket" "gitlab_releases" {
-  bucket = "${local.project_name}-${local.environment}-releases-${random_id.release_bucket_suffix.hex}"
-  
-  tags = merge(local.common_tags, {
-    Name        = "${local.project_name}-releases-bucket"
-    Role        = "gitlab-releases-storage"
+  bucket = "gitlab-server-production-releases-${random_id.release_bucket_suffix.hex}"
+  force_destroy = true # Enable force destroy to clean up bucket contents on destroy
+
+  tags = {
     Application = "gitlab-cicd"
-    Purpose     = "release-metadata"
-  })
+    Project     = "gitlab-server"
+    Role        = "gitlab-releases-storage"
+    Environment = "production"
+    ManagedBy   = "terraform"
+    Owner       = "devops-team"
+    Name        = "gitlab-server-releases-bucket"
+    Purpose     = "ci-cd-releases"
+  }
 }
 
 # Random suffix for release bucket name
