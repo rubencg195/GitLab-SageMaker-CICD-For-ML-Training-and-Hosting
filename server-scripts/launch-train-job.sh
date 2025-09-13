@@ -66,26 +66,66 @@ error_exit() {
 
 # Function to setup training code repository
 setup_code_repository() {
+    set -x # Enable shell debugging
     log_info "Setting up training scripts repository..."
     
+    # Generate unique commit info first (needed for README and commit messages)
+    TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+    RANDOM_ID=$(date +%N | tail -c4)  # Use nanoseconds for randomness
+    COMMIT_HASH=$(echo "$TIMESTAMP-$$-$RANDOM_ID" | sha256sum 2>/dev/null | cut -d' ' -f1 | head -c8 || echo "$(date +%s | tail -c8)")
+
+    # Get GitLab root password for authentication (moved up for ls-remote check)
+    log_info "Retrieving GitLab root password for authentication..."
+    GITLAB_ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | awk '{print \$2}'" 2>/dev/null)
+    
+    if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
+        log_error "Could not retrieve GitLab root password"
+        return 1
+    fi
+    
+    ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g; s|!|%21|g')
+    GITLAB_REPO_URL="http://root:$ENCODED_PASSWORD@$GITLAB_IP/root/$PROJECT_NAME.git"
+    BRANCH_NAME="main"
+
     # Create temporary directory for GitLab repository content
     TEMP_REPO_DIR="/tmp/gitlab-training-repo-$$"
     rm -rf "$TEMP_REPO_DIR"
     mkdir -p "$TEMP_REPO_DIR"
     
     log_info "Preparing training scripts repository structure..."
+
+    # Check if remote branch exists
+    log_info "Checking if remote branch '$BRANCH_NAME' exists at $GITLAB_REPO_URL..."
+    if git ls-remote --heads "$GITLAB_REPO_URL" "$BRANCH_NAME" &> /dev/null; then
+        log_info "Remote branch '$BRANCH_NAME' found. Cloning existing repository."
+        git clone "$GITLAB_REPO_URL" "$TEMP_REPO_DIR"
+        cd "$TEMP_REPO_DIR"
+        # After cloning, 'main' branch is already checked out by git clone
+    else
+        log_info "Remote branch '$BRANCH_NAME' not found. Initializing new repository."
+        cd "$TEMP_REPO_DIR"
+        git init --initial-branch="$BRANCH_NAME"
+    fi
     
-    # Generate unique commit info first (needed for README)
-    TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-    RANDOM_ID=$(date +%N | tail -c4)  # Use nanoseconds for randomness
-    COMMIT_HASH=$(echo "$TIMESTAMP-$$-$RANDOM_ID" | sha256sum 2>/dev/null | cut -d' ' -f1 | head -c8 || echo "$(date +%s | tail -c8)")
-    
+    git config user.email "gitlab-cicd@localhost"
+    git config user.name "GitLab CI/CD Setup"
+
+    # Add remote if not already added (for cloned repos this will be origin)
+    if git remote get-url origin &> /dev/null; then
+        log_info "Remote 'origin' already exists, updating URL."
+        git remote set-url origin "$GITLAB_REPO_URL"
+    else
+        log_info "Remote 'origin' not found, adding it."
+        git remote add origin "$GITLAB_REPO_URL"
+    fi
+    log_success "GitLab authentication configured with root user"
+
     # Copy only the training-related files to temp directory
-    if [ -d "train-script" ]; then
-        cp -r train-script/* "$TEMP_REPO_DIR/"
+    if [ -d "$PROJECT_ROOT/train-script" ]; then
+        cp -r "$PROJECT_ROOT/train-script"/* "$TEMP_REPO_DIR/"
         log_success "Copied training scripts"
     else
-        error_exit "train-script directory not found"
+        error_exit "train-script directory not found in $PROJECT_ROOT"
     fi
     
     # Copy CI/CD configuration
@@ -163,65 +203,54 @@ Commit Hash: $COMMIT_HASH
 Timestamp: $TIMESTAMP
 EOF
     
-    # Initialize git repository in temp directory
-    cd "$TEMP_REPO_DIR"
-    
-    # Initialize git and configure
-    git init
-    git config user.email "gitlab-cicd@localhost"
-    git config user.name "GitLab CI/CD Setup"
-    
-    # Get GitLab root password for authentication
-    log_info "Retrieving GitLab root password for authentication..."
-    GITLAB_ROOT_PASSWORD=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo cat /etc/gitlab/initial_root_password | grep 'Password:' | awk '{print \$2}'" 2>/dev/null)
-    
-    if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
-        log_error "Could not retrieve GitLab root password"
-        return 1
-    fi
-    
-    # URL encode the password to handle special characters
-    ENCODED_PASSWORD=$(echo "$GITLAB_ROOT_PASSWORD" | sed 's|/|%2F|g; s|=|%3D|g; s|\+|%2B|g; s|!|%21|g')
-    GITLAB_REPO_URL="http://root:$ENCODED_PASSWORD@$GITLAB_IP/root/$PROJECT_NAME.git"
-    
-    # Always create new repository to avoid conflicts with existing cloned repo
-    log_info "Creating new repository content for push..."
-    
-    # Set up GitLab remote with root user authentication
-    git remote add origin "$GITLAB_REPO_URL"
-    log_success "GitLab authentication configured with root user"
-    
-    # Push directly to main branch to trigger pipelines
-    BRANCH_NAME="main"
-    
-    log_debug "Files in temporary repository before git add:
-$(ls -la)"
-    log_info "Pushing directly to main branch to trigger pipeline"
-    
-    # Switch to main branch
-    git checkout -b "$BRANCH_NAME"
     
     # Add all new files
     git add ./.gitlab-ci.yml
     git add .
-    log_debug "Git status after git add:
-$(git status)"
+    log_debug "Git status after git add:\n$(git status)"
     
     # Create commit with unique message including random file content to ensure uniqueness
     echo "Build trigger: $COMMIT_HASH-$(date +%N)" > ".pipeline-trigger-$COMMIT_HASH"
     git add ".pipeline-trigger-$COMMIT_HASH"
     
-    git commit -m "Training pipeline update - $TIMESTAMP"
-    log_debug "Git status after git commit:
-$(git status)"
+    # Add a unique timestamp file to ensure every commit is different
+    echo "Pipeline execution timestamp: $(date +%s%N)" > ".unique-timestamp-$(date +%s%N)"
+    git add ".unique-timestamp-*"
     
-    # Push to main branch (regular push for new repository)
-    log_info "Pushing to GitLab main branch: $BRANCH_NAME"
-    if git push --force origin "$BRANCH_NAME"; then
-        log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+    git commit -m "Training pipeline update - $TIMESTAMP - Build $COMMIT_HASH"
+    log_debug "Git status after git commit:\n$(git status)"
+    
+    # Check if there are actual content changes to force push, otherwise create an empty commit
+    log_info "Checking for content changes before pushing..."
+    git fetch origin "$BRANCH_NAME" 2>/dev/null || true # Fetch remote branch, ignore errors if it doesn't exist yet
+    
+    if git diff --quiet "origin/$BRANCH_NAME" "HEAD"; then
+        log_info "No content changes detected. Creating an empty commit to trigger pipeline."
+        git commit --allow-empty -m "Trigger pipeline (empty commit) - $TIMESTAMP - Build $COMMIT_HASH"
+        # Ensure local branch is up-to-date before pushing
+        log_info "Pulling latest changes from remote before pushing..."
+        if ! git pull --rebase origin "$BRANCH_NAME"; then
+            log_warning "Failed to pull latest changes. This might indicate an empty repository or a new branch. Proceeding with push."
+        fi
+
+        # Push the empty commit without force
+        if git push origin "$BRANCH_NAME"; then
+            log_success "Empty commit pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+        else
+            log_error "Failed to push empty commit to GitLab"
+            return 1
+        fi
     else
-        log_error "Failed to push training scripts to GitLab"
-        return 1
+        log_info "Content changes detected. Proceeding with regular push."
+        
+        # Push with content changes
+        log_info "Pushing to GitLab main branch: $BRANCH_NAME"
+        if git push origin "$BRANCH_NAME"; then
+            log_success "Training pipeline pushed to GitLab main branch (Hash: $COMMIT_HASH, Branch: $BRANCH_NAME)"
+        else
+            log_error "Failed to push training scripts to GitLab"
+            return 1
+        fi
     fi
     
     # Store commit info for summary (make variables global for monitor function)
