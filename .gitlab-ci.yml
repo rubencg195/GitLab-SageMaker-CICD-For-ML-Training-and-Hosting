@@ -26,7 +26,7 @@ build_job:
   stage: build
   script:
     - echo "Building and preparing environment..."
-    - python --version
+    - python3 --version
     - pwd
     - ls -la
     - echo "Dependencies installed."
@@ -57,7 +57,7 @@ train_job:
     - |
       if [ -f train.py ]; then
         echo "Running training script..."
-        python train.py --job-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA" --role-arn "$SAGEMAKER_ROLE_ARN" --s3-bucket "$S3_BUCKET" --instance-type ml.m5.large --max-runtime 3600 --num-round 100 --max-depth 6 --eta 0.3 --objective reg:squarederror
+        python3 train.py --job-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA" --role-arn "$SAGEMAKER_ROLE_ARN" --s3-bucket "$S3_BUCKET" --instance-type ml.m5.large --max-runtime 3600 --num-round 100 --max-depth 6 --eta 0.3 --objective reg:squarederror
       else
         echo "train.py not found, skipping training"
         exit 1
@@ -81,7 +81,7 @@ package_job:
     - |
       if [ -f create_zip_package.py ]; then
         echo "Running packaging script..."
-        python create_zip_package.py --zip-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA.zip" --release-type "training-artifact" --commit-id "$CI_COMMIT_SHORT_SHA" --training-output training_output/
+        python3 create_zip_package.py --zip-name "$CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA.zip" --release-type "training-artifact" --commit-id "$CI_COMMIT_SHORT_SHA" --training-output training_output/
       else
         echo "create_zip_package.py not found, skipping packaging"
         exit 1
@@ -104,7 +104,7 @@ notify_job:
     - |
       if [ -f send_notification.py ]; then
         echo "Running notification script..."
-        python send_notification.py --pipeline-status "$CI_PIPELINE_STATUS" --project-name "$CI_PROJECT_NAME" --pipeline-url "$CI_PIPELINE_URL"
+        python3 send_notification.py --pipeline-status "$CI_PIPELINE_STATUS" --project-name "$CI_PROJECT_NAME" --pipeline-url "$CI_PIPELINE_URL"
       else
         echo "send_notification.py not found, skipping notification"
         echo "Notification step completed (mock)"

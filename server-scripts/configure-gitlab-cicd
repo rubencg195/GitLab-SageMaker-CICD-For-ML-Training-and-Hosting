@@ -272,6 +272,13 @@ setup_gitlab_runner() {
         log_info "Registering GitLab Runner..."
         REGISTER_OUTPUT=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
             echo 'Registering GitLab Runner...'
+
+        # Install Python and pip dependencies for shell executor
+        echo "Installing Python pip dependencies for shell executor..."
+        sudo apt-get update -y
+        sudo apt-get install -y python3 python3-pip
+        echo "Python dependencies installed: $(which python3) $(which pip3)"
+
             sudo gitlab-runner register --non-interactive \
                 --url $GITLAB_URL \
                 --registration-token $RUNNER_TOKEN \
