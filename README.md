@@ -49,6 +49,11 @@ The deployed training job repository with simplified training scripts and CI/CD 
 
 The GitLab CI/CD pipeline showing automated training job execution with artifact management.
 
+### GitHub Credential Manager
+![GitHub Credential Manager](images/github-credential-manager.png)
+
+Git credential manager configuration for secure repository access and authentication.
+
 ### Git Push Process
 ![Git Push](images/git-push.png)
 
@@ -343,7 +348,7 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 - Re-run configure script: `./server-scripts/configure-gitlab-cicd`
 - Verify runner token and registration
 
-#### 5. GitLab Runner Dependencies Missing
+#### 5. GitLab Runner Dependencies Missing (FIXED)
 **Symptoms**: Pipeline fails with `pip: command not found` or similar dependency errors
 **Solutions**:
 - Install Python and pip on GitLab runner: `sudo apt update && sudo apt install -y python3 python3-pip`
@@ -514,6 +519,24 @@ tofu apply -auto-approve
 # Check with specific settings
 ./server-scripts/check-train-pipeline.sh --gitlab-ip 1.2.3.4 --project-id 123 --verbose
 ```
+
+### Recent Pipeline Fixes and Improvements
+
+#### ✅ Fixed CI/CD Pipeline Issues
+- **Fixed ".env file issue"**: Replaced `tofu output` commands with hardcoded values for `ARTIFACTS_BUCKET` and `RELEASES_BUCKET` in `launch-train-job.sh`
+- **Fixed "python: command not found"**: Changed all `python` commands to `python3` in `.gitlab-ci.yml` (build, train, package, notify jobs)
+- **Enhanced runner configuration**: Updated `configure-gitlab-cicd` to include Python/pip installation for shell executors
+- **Removed redundant scripts**: Deleted `configure-gitlab-runner.sh` as it was redundant with `configure-gitlab-cicd`
+
+#### ��� Technical Details
+- **File**: `server-scripts/launch-train-job.sh` - Lines 157-158: Hardcoded bucket names instead of `tofu output`
+- **File**: `.gitlab-ci.yml` - Lines 29, 60, 84, 107: Changed `python` to `python3` commands
+- **File**: `server-scripts/configure-gitlab-cicd` - Added Python/pip installation for shell executors
+
+#### ��� Result
+- **Pipeline Success**: All CI/CD stages now execute successfully (build → train → package → notify)
+- **Reliability**: No more dependency on `tofu` commands in CI/CD environment
+- **Maintainability**: Cleaner architecture with proper Python 3 support
 
 ### Troubleshooting Common Issues
 
@@ -711,6 +734,12 @@ tofu output gitlab_releases_bucket_name   # S3 releases bucket
 ## 📅 Recent Updates
 
 ### ⚡ Three-Script Architecture (Latest)
+
+### ✅ CI/CD Pipeline Fixes (Latest)
+- **Fixed Python Dependencies**: All `python` commands changed to `python3` in CI/CD pipeline
+- **Resolved ".env" Issues**: Removed `tofu output` commands with hardcoded bucket values
+- **Enhanced Runner Setup**: Python/pip installation included in shell executor configuration
+- **Simplified Architecture**: Removed redundant scripts for cleaner maintenance
 - **Modular Design**: Separated infrastructure setup from training deployment
 - **Reusable Components**: Easy to add different training job types
 - **Clean Workflows**: Destroy → Setup → Launch pattern for reproducible deployments
@@ -736,3 +765,15 @@ tofu output gitlab_releases_bucket_name   # S3 releases bucket
 **🎉 Your SageMaker Training CI/CD Pipeline is ready!**
 
 This solution provides everything needed for automated machine learning workflows with GitLab CI/CD, SageMaker training jobs, artifact management, and comprehensive monitoring in a secure, scalable, and cost-effective architecture.
+### Pipeline Completion Screenshots
+![All Pipeline Steps Completed](images/pipeline-all-steps-completed.png)
+
+The complete CI/CD pipeline showing all stages successfully executed: build → train → package → notify.
+
+![Pipeline Training Step](images/pipeline-all-steps-completed-training-step.png)
+
+Detailed view of the training job execution with SageMaker integration and successful completion.
+
+![Pipeline Closer Look](images/pipeline-all-steps-completed-closer-look.png)
+
+Close-up view of pipeline execution details and job status indicators.
