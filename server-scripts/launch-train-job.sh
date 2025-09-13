@@ -154,8 +154,8 @@ setup_code_repository() {
     
     # Get AWS Account ID and S3 bucket names for the pipeline
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "176843580427")
-    ARTIFACTS_BUCKET="gitlab-server-production-artifacts-be069d6d"
-    RELEASES_BUCKET="gitlab-server-production-releases-c4175b30"
+    ARTIFACTS_BUCKET="rubenchevez-demo-gitlab-artifacts"
+    RELEASES_BUCKET="rubenchevez-demo-gitlab-releases"
     
     # Create environment variables file for CI/CD
     cat > "$TEMP_REPO_DIR/.env" << EOF
@@ -278,7 +278,7 @@ get_fresh_gitlab_token() {
             token = user.personal_access_tokens.create(
                 scopes: ['api', 'read_user', 'read_repository'],
                 name: '$TOKEN_NAME',
-                expires_at: 2.hours.from_now
+                expires_at: 3.days.from_now
             )
             puts token.token if token.persisted?
         end\"" 2>/dev/null)
@@ -364,8 +364,8 @@ display_summary() {
     echo "  • Project URL: $GITLAB_URL/root/$PROJECT_NAME"
     echo ""
     echo "S3 Buckets:"
-    echo "  • Artifacts: gitlab-server-production-artifacts-be069d6d"
-    echo "  • Releases: gitlab-server-production-releases-c4175b30"
+    echo "  • Artifacts: rubenchevez-demo-gitlab-artifacts"
+    echo "  • Releases: rubenchevez-demo-gitlab-releases"
     echo ""
     echo "Training Pipeline Features:"
     echo "  • ✅ Simplified training demo"

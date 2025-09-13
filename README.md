@@ -1,16 +1,17 @@
-# SageMaker Training Job CI/CD with GitLab on AWS
+# End-to-End Machine Learning CI/CD: Training & Deployment with GitLab and SageMaker on AWS
 
-This project deploys a complete **SageMaker ML Training Pipeline** with **GitLab CI/CD** on AWS using OpenTofu/Terraform. The solution provides automated machine learning training workflows with comprehensive CI/CD pipeline management, artifact storage, and monitoring capabilities.
+This project demonstrates a complete **Machine Learning CI/CD Pipeline** that automates the entire ML lifecycle from training to deployment. Built on **GitLab CI/CD** and **AWS SageMaker**, this solution provides production-ready infrastructure for automated ML model training, testing, packaging, and deployment with comprehensive monitoring and artifact management.
 
 ## 🎯 Project Overview
 
-This solution provides:
-- **Complete GitLab CE Server Infrastructure** deployed on AWS
-- **SageMaker Training Job CI/CD Pipeline** with automated workflows
-- **Modular Script Architecture** for different training job types
-- **S3 Artifact Management** with automated packaging and storage
-- **Production-ready Architecture** with monitoring, security, and cost optimization
-- **Three-Script Workflow**: Destroy → Setup → Launch architecture
+This end-to-end ML solution provides:
+- **Complete GitLab CI/CD Infrastructure** deployed on AWS for ML workflows
+- **SageMaker Training Pipeline**: Automated model training with hyperparameter optimization
+- **Model Deployment**: Automated packaging and deployment of trained models
+- **Artifact Management**: Versioned model storage in S3 with full lineage tracking
+- **Modular Architecture**: Flexible three-script design supporting multiple ML frameworks
+- **Production Monitoring**: Comprehensive logging, health checks, and performance monitoring
+- **Security & Compliance**: Enterprise-grade security with encryption, IAM roles, and audit trails
 
 ## 🏗️ Architecture Overview
 
@@ -58,6 +59,27 @@ Git credential manager configuration for secure repository access and authentica
 ![Git Push](images/git-push.png)
 
 The automated Git push process showing training scripts deployment to GitLab.
+
+### Pipeline Completion Screenshots
+![All Pipeline Steps Completed](images/pipeline-all-steps-completed.png)
+
+The complete CI/CD pipeline showing all stages successfully executed: build → train → package → notify.
+
+![Pipeline Training Step](images/pipeline-all-steps-completed-training-step.png)
+
+Detailed view of the training job execution with SageMaker integration and successful completion.
+
+![Pipeline Closer Look](images/pipeline-all-steps-completed-closer-look.png)
+
+Close-up view of pipeline execution details and job status indicators.
+
+![S3 Upload Step](images/pipeline-all-steps-completed-candidate-s3-upload-step.png)
+
+Detailed view of the S3 upload step showing successful artifact packaging and storage.
+
+![Multiple Pipelines Completed](images/pipeline-all-steps-multiple-pipelines-completed.png)
+
+View showing multiple successful pipeline executions demonstrating repeatable workflow.
 
 ## 🚀 Quick Start Guide
 
@@ -528,12 +550,12 @@ tofu apply -auto-approve
 - **Enhanced runner configuration**: Updated `configure-gitlab-cicd` to include Python/pip installation for shell executors
 - **Removed redundant scripts**: Deleted `configure-gitlab-runner.sh` as it was redundant with `configure-gitlab-cicd`
 
-#### ��� Technical Details
+#### ��� Technical Details
 - **File**: `server-scripts/launch-train-job.sh` - Lines 157-158: Hardcoded bucket names instead of `tofu output`
 - **File**: `.gitlab-ci.yml` - Lines 29, 60, 84, 107: Changed `python` to `python3` commands
 - **File**: `server-scripts/configure-gitlab-cicd` - Added Python/pip installation for shell executors
 
-#### ��� Result
+#### ��� Result
 - **Pipeline Success**: All CI/CD stages now execute successfully (build → train → package → notify)
 - **Reliability**: No more dependency on `tofu` commands in CI/CD environment
 - **Maintainability**: Cleaner architecture with proper Python 3 support
@@ -765,15 +787,3 @@ tofu output gitlab_releases_bucket_name   # S3 releases bucket
 **🎉 Your SageMaker Training CI/CD Pipeline is ready!**
 
 This solution provides everything needed for automated machine learning workflows with GitLab CI/CD, SageMaker training jobs, artifact management, and comprehensive monitoring in a secure, scalable, and cost-effective architecture.
-### Pipeline Completion Screenshots
-![All Pipeline Steps Completed](images/pipeline-all-steps-completed.png)
-
-The complete CI/CD pipeline showing all stages successfully executed: build → train → package → notify.
-
-![Pipeline Training Step](images/pipeline-all-steps-completed-training-step.png)
-
-Detailed view of the training job execution with SageMaker integration and successful completion.
-
-![Pipeline Closer Look](images/pipeline-all-steps-completed-closer-look.png)
-
-Close-up view of pipeline execution details and job status indicators.

@@ -222,7 +222,7 @@ get_gitlab_token() {
         TOKEN_NAME="pipeline-check-token-$TIMESTAMP"
         
         log_debug "Creating token: $TOKEN_NAME"
-        local CREATE_TOKEN_SSH_COMMAND="sudo gitlab-rails runner \"begin; user = User.find_by(username: 'root'); if user; token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository'], name: '$TOKEN_NAME', expires_at: 1.hour.from_now); if token.persisted?; puts 'Token: ' + token.token; else; puts 'Error: Token creation failed - ' + token.errors.full_messages.join(', '); end; else; puts 'Error: Root user not found'; end; rescue => e; puts 'Error: ' + e.message; end\""
+        local CREATE_TOKEN_SSH_COMMAND="sudo gitlab-rails runner \"begin; user = User.find_by(username: 'root'); if user; token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository'], name: '$TOKEN_NAME', expires_at: 3.days.from_now); if token.persisted?; puts 'Token: ' + token.token; else; puts 'Error: Token creation failed - ' + token.errors.full_messages.join(', '); end; else; puts 'Error: Root user not found'; end; rescue => e; puts 'Error: ' + e.message; end\""
         CREATE_TOKEN_OUTPUT=$(timeout 30 ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "$CREATE_TOKEN_SSH_COMMAND" 2>/dev/null || echo "")
         
         log_debug "SSH command output for new token: $CREATE_TOKEN_OUTPUT"

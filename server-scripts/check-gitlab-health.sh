@@ -204,7 +204,7 @@ test_gitlab_login() {
                  if user
                      # Clean up old test tokens
                      user.personal_access_tokens.where(name: 'health-check-token').destroy_all
-                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 1.day.from_now)
+                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 3.days.from_now)
                      if token.persisted?
                          puts token.token
                      else
@@ -255,7 +255,7 @@ test_gitlab_api() {
                  "sudo gitlab-rails runner \"
                  user = User.find_by(username: 'root')
                  if user
-                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 1.hour.from_now)
+                     token = user.personal_access_tokens.create(scopes: ['api'], name: 'health-check-token', expires_at: 3.days.from_now)
                      if token.persisted?
                          puts token.token
                      else

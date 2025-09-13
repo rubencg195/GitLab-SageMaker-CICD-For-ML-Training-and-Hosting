@@ -134,7 +134,7 @@ get_access_token() {
         log_info "No existing token found. Creating new GitLab access token for cleanup..."
         TIMESTAMP=$(date +%s)
         set +e  # Temporarily disable exit on error for this operation
-        GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository', 'write_repository'], name: 'cleanup-token-$TIMESTAMP', expires_at: 1.day.from_now); puts 'Token: ' + token.token if token.persisted?; puts 'Errors: ' + token.errors.full_messages.join(', ') unless token.persisted?\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
+        GITLAB_TOKEN=$(ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$GITLAB_IP "sudo gitlab-rails runner \"user = User.find_by(username: 'root'); token = user.personal_access_tokens.create(scopes: ['api', 'read_user', 'read_repository', 'write_repository'], name: 'cleanup-token-$TIMESTAMP', expires_at: 3.days.from_now); puts 'Token: ' + token.token if token.persisted?; puts 'Errors: ' + token.errors.full_messages.join(', ') unless token.persisted?\"" 2>/dev/null | grep "Token:" | cut -d' ' -f2 || echo "")
         set -e  # Re-enable exit on error
     else
         log_info "Using existing GitLab access token"

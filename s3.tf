@@ -3,7 +3,7 @@
 
 # S3 Bucket for storing CI/CD artifacts
 resource "aws_s3_bucket" "gitlab_artifacts" {
-  bucket = "gitlab-server-production-artifacts-${random_id.bucket_suffix.hex}"
+  bucket = "rubenchevez-demo-gitlab-artifacts"
   force_destroy = true # Enable force destroy to clean up bucket contents on destroy
 
   tags = {
@@ -19,9 +19,6 @@ resource "aws_s3_bucket" "gitlab_artifacts" {
 }
 
 # Random suffix for unique bucket name
-resource "random_id" "bucket_suffix" {
-  byte_length = 4
-}
 
 # S3 Bucket Versioning
 resource "aws_s3_bucket_versioning" "gitlab_artifacts" {
@@ -162,7 +159,7 @@ resource "aws_s3_bucket_cors_configuration" "gitlab_artifacts" {
 
 # S3 Bucket for storing release notes and metadata
 resource "aws_s3_bucket" "gitlab_releases" {
-  bucket = "gitlab-server-production-releases-${random_id.release_bucket_suffix.hex}"
+  bucket = "rubenchevez-demo-gitlab-releases"
   force_destroy = true # Enable force destroy to clean up bucket contents on destroy
 
   tags = {
@@ -178,9 +175,6 @@ resource "aws_s3_bucket" "gitlab_releases" {
 }
 
 # Random suffix for release bucket name
-resource "random_id" "release_bucket_suffix" {
-  byte_length = 4
-}
 
 # S3 Bucket Versioning for releases
 resource "aws_s3_bucket_versioning" "gitlab_releases" {
