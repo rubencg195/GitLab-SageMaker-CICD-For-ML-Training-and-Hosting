@@ -72,6 +72,70 @@ EOF
   }
 }
 
+resource "aws_security_group" "gitlab_sg" {
+  name_prefix = "gitlab-server-gitlab-"
+  vpc_id      = aws_vpc.gitlab_vpc.id
+  description = "Managed by Terraform"
+
+  # Allow all outbound traffic to VPC
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.gitlab_vpc.cidr_block]
+    description = "All outbound traffic to VPC"
+  }
+
+  # Allow all outbound internet access (for package installation, updates, etc.)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "All outbound internet access"
+  }
+
+  # SSH access for management
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SSH access for management"
+  }
+
+  # HTTP access for web interface
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP access for web interface"
+  }
+
+  # HTTPS access for web interface
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS access for web interface"
+  }
+
+  # Allow all inbound traffic from VPC
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.gitlab_vpc.cidr_block]
+    description = "Allow all inbound traffic from VPC"
+  }
+
+  tags = {
+    Name = "gitlab-server-gitlab-sg"
+  }
+}
+
 # Attach EBS volume to GitLab instance
 resource "aws_volume_attachment" "gitlab_data_attachment" {
   device_name = local.ebs_device_name

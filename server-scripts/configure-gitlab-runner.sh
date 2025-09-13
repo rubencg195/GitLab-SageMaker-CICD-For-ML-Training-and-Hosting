@@ -21,6 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_FILE="/var/log/gitlab-runner-config.log"
 
+# Global variables
+GITLAB_IP=""
+GITLAB_URL=""
+
 # Logging function
 log() {
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -74,6 +78,29 @@ show_usage() {
     echo "  $0 --runner-ip 10.0.1.100  # Configure specific runner"
     echo "  $0 --list-runners           # List all registered runners"
     echo "  $0 --verify-runners         # Verify runner connectivity"
+}
+
+# Function to get GitLab server IP using AWS instance metadata
+get_gitlab_ip() {
+    log_info "Getting GitLab server IP from AWS instance metadata..."
+    
+    # Try to get public IP from AWS metadata service
+    GITLAB_IP=$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null)
+    
+    if [ -z "$GITLAB_IP" ]; then
+        # Fallback to private IP if public IP not available
+        GITLAB_IP=$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null)
+        if [ -z "$GITLAB_IP" ]; then
+            log_error "Could not get GitLab IP from AWS metadata service"
+            return 1
+        fi
+        log_warning "Using private IP (public IP not available): $GITLAB_IP"
+    else
+        log_success "GitLab public IP detected: $GITLAB_IP"
+    fi
+    
+    GITLAB_URL="http://$GITLAB_IP"
+    return 0
 }
 
 # Function to get GitLab registration token
@@ -229,28 +256,37 @@ show_tokens() {
 discover_runners() {
     log_info "Discovering GitLab runner instances..."
     
-    # Get runner instances from AWS (if available)
-    local runner_ips=""
+    # Get runner manager IP from OpenTofu outputs
+    local runner_ip=""
     
+    # Change to project root to access OpenTofu files
+    cd "$PROJECT_ROOT"
+    
+    runner_ip=$(tofu output -raw gitlab_runner_manager_ip 2>/dev/null)
+    if [ -n "$runner_ip" ]; then
+        log_success "Found runner manager IP from OpenTofu: $runner_ip"
+        echo "$runner_ip"
+        return 0
+    fi
+    
+    # Fallback to AWS CLI discovery if OpenTofu output not available
     if command -v aws &> /dev/null; then
         log_info "Using AWS CLI to discover runner instances..."
-        runner_ips=$(aws ec2 describe-instances \
+        local runner_ips=$(aws ec2 describe-instances \
             --filters "Name=tag:Purpose,Values=gitlab-runner" \
                      "Name=instance-state-name,Values=running" \
             --query 'Reservations[].Instances[].PrivateIpAddress' \
             --output text 2>/dev/null || echo "")
-    fi
-    
-    if [ -z "$runner_ips" ]; then
-        log_warning "No runner instances found via AWS CLI"
-        # Try to get from terraform outputs
-        if [ -f "$PROJECT_ROOT/terraform.tfstate" ]; then
-            log_info "Checking Terraform state for runner IPs..."
-            # This would need to be implemented based on your terraform outputs
+        
+        if [ -n "$runner_ips" ]; then
+            log_success "Found runner instances via AWS CLI: $runner_ips"
+            echo "$runner_ips"
+            return 0
         fi
     fi
     
-    echo "$runner_ips"
+    log_warning "No runner instances found via OpenTofu or AWS CLI"
+    return 1
 }
 
 # Function to configure a specific runner
@@ -286,11 +322,11 @@ configure_runner() {
             echo 'Registering new runner...'
             sudo gitlab-runner register \\
                 --non-interactive \\
-                --url 'http://$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)' \\
+                --url '$GITLAB_URL' \\
                 --registration-token '$reg_token' \\
                 --executor 'docker' \\
-                --docker-image 'ubuntu:20.04' \\
-                --description 'SageMaker ML Training Runner ($(hostname))' \\
+                --docker-image 'python:3.8-slim-buster' \\
+                --description 'SageMaker ML Training Runner (\$(hostname))' \\
                 --tag-list 'ml,sagemaker,training,cicd' \\
                 --run-untagged='true' \\
                 --locked='false' \\
@@ -491,12 +527,18 @@ main() {
             display_runner_architecture_info
             ;;
         "auto-configure")
+            get_gitlab_ip
             auto_configure_runners
             ;;
         "configure-specific")
             if [ -z "$RUNNER_IP" ]; then
-                error_exit "Runner IP not provided"
+                # Auto-discover runner IP if not provided
+                RUNNER_IP=$(discover_runners)
+                if [ -z "$RUNNER_IP" ]; then
+                    error_exit "Runner IP not provided and could not be discovered"
+                fi
             fi
+            get_gitlab_ip
             configure_runner "$RUNNER_IP"
             ;;
         "list")

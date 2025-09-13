@@ -145,7 +145,7 @@ resource "aws_security_group" "gitlab_runner_manager_sg" {
   vpc_id      = aws_vpc.gitlab_vpc.id
   description = "Security group for GitLab Runner Manager instance"
 
-  # Outbound internet access
+  # Outbound internet access (for package installation, Docker, etc.)
   egress {
     from_port   = 0
     to_port     = 0
@@ -154,22 +154,13 @@ resource "aws_security_group" "gitlab_runner_manager_sg" {
     description = "All outbound traffic"
   }
 
-  # Outbound to GitLab server (HTTP for API calls)
+  # Allow all outbound traffic to VPC
   egress {
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    security_groups = [aws_security_group.gitlab_sg.id]
-    description     = "HTTP to GitLab server for API calls"
-  }
-
-  # Outbound to GitLab server (SSH for configuration)
-  egress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.gitlab_sg.id]
-    description     = "SSH to GitLab server for configuration"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.gitlab_vpc.cidr_block]
+    description = "All outbound traffic to VPC"
   }
 
   # SSH access for management
@@ -181,22 +172,13 @@ resource "aws_security_group" "gitlab_runner_manager_sg" {
     description = "SSH access for management"
   }
 
-  # Runner metrics endpoint from GitLab server
+  # Allow all inbound traffic from VPC
   ingress {
-    from_port       = 9252
-    to_port         = 9252
-    protocol        = "tcp"
-    security_groups = [aws_security_group.gitlab_sg.id]
-    description     = "GitLab Runner metrics from GitLab server"
-  }
-
-  # SSH access from GitLab server (for token retrieval and management)
-  ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
-    security_groups = [aws_security_group.gitlab_sg.id]
-    description     = "SSH from GitLab server for management"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.gitlab_vpc.cidr_block]
+    description = "Allow all inbound traffic from VPC"
   }
 
   tags = {
@@ -217,6 +199,14 @@ resource "aws_security_group" "gitlab_runner_machines_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
     description = "All outbound traffic"
+  }
+
+  egress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_security_group.gitlab_sg.id]
+    description     = "Allow all outbound traffic to GitLab server"
   }
 
   # SSH access from runner manager (Docker Machine requirement)
@@ -339,25 +329,4 @@ output "gitlab_runner_manager_security_group_id" {
 output "gitlab_runner_machines_security_group_id" {
   description = "Security Group ID for Docker Machine spawned instances"
   value       = aws_security_group.gitlab_runner_machines_sg.id
-}
-
-# Security Group Rules for GitLab Server to accept Runner Manager connections
-resource "aws_security_group_rule" "gitlab_allow_runner_ssh" {
-  type                     = "ingress"
-  from_port                = 22
-  to_port                  = 22
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.gitlab_runner_manager_sg.id
-  security_group_id        = aws_security_group.gitlab_sg.id
-  description              = "SSH from GitLab Runner Manager for configuration"
-}
-
-resource "aws_security_group_rule" "gitlab_allow_runner_http" {
-  type                     = "ingress"
-  from_port                = 80
-  to_port                  = 80
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.gitlab_runner_manager_sg.id
-  security_group_id        = aws_security_group.gitlab_sg.id
-  description              = "HTTP from GitLab Runner Manager for API calls"
 }

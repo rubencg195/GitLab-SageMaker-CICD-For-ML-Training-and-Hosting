@@ -147,7 +147,7 @@ gitlab-runner register \
     --registration-token "$REGISTRATION_TOKEN" \
     --executor "docker+machine" \
     --description "GitLab AWS Autoscaler (SageMaker ML Training)" \
-    --docker-image "ubuntu:20.04" \
+    --docker-image "python:3.8-slim-buster" \
     --docker-privileged="true" \
     --docker-disable-cache="true" \
     --limit=20
@@ -172,11 +172,14 @@ shutdown_timeout = 0
   limit = 20
   
   [runners.docker]
-    image = "ubuntu:20.04"
+    image = "python:3.8-slim-buster"
     privileged = true
     disable_cache = true
     volumes = ["/cache", "/var/run/docker.sock:/var/run/docker.sock"]
     
+  run_untagged = true
+  locked = false
+
   [runners.cache]
     Type = "s3"
     Shared = true

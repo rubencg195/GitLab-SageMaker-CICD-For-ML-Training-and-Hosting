@@ -84,34 +84,58 @@ check_prerequisites() {
 # Function to get GitLab information from OpenTofu
 get_gitlab_info() {
     log_info "Getting GitLab information from OpenTofu outputs..."
-    # Get GitLab public IP
-    GITLAB_IP=$(tofu output -raw gitlab_public_ip 2>/dev/null)
-    if [ -z "$GITLAB_IP" ]; then
+    
+    # Debug: Show current directory and tofu status
+    log_info "Current directory: $(pwd)"
+    log_info "OpenTofu version: $(tofu version 2>/dev/null || echo 'tofu not available')"
+    
+    # Get GitLab public IP with detailed debugging
+    log_info "Attempting to get gitlab_public_ip from OpenTofu..."
+    GITLAB_IP=$(tofu output -raw gitlab_public_ip 2>&1)
+    if [ $? -eq 0 ] && [ -n "$GITLAB_IP" ]; then
+        log_success "GitLab public IP from OpenTofu: $GITLAB_IP"
+    else
+        log_error "Failed to get GitLab public IP from OpenTofu. Output: $GITLAB_IP"
         error_exit "Could not get GitLab public IP from OpenTofu outputs"
     fi
+    
     GITLAB_URL="http://$GITLAB_IP"
-    log_success "GitLab IP detected: $GITLAB_IP"
-    # Get AWS account ID
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    if [ -z "$AWS_ACCOUNT_ID" ]; then
+    log_success "GitLab URL set to: $GITLAB_URL"
+    
+    # Get AWS account ID with debugging
+    log_info "Getting AWS account ID..."
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>&1)
+    if [ $? -eq 0 ] && [ -n "$AWS_ACCOUNT_ID" ]; then
+        log_success "AWS Account ID: $AWS_ACCOUNT_ID"
+    else
+        log_error "Failed to get AWS Account ID. Output: $AWS_ACCOUNT_ID"
         error_exit "Could not get AWS Account ID"
     fi
-    log_success "AWS Account ID: $AWS_ACCOUNT_ID"
 }
 
 # Function to verify GitLab is accessible
 verify_gitlab_access() {
     log_info "Verifying GitLab server accessibility..."
-    # Test HTTP connectivity
-    if curl -s --connect-timeout 10 "$GITLAB_URL" > /dev/null; then
-        log_success "GitLab server is accessible"
+    
+    # Test HTTP connectivity with detailed debugging
+    log_info "Testing HTTP connectivity to $GITLAB_URL..."
+    HTTP_RESPONSE=$(curl -s -w "%{http_code}" --connect-timeout 10 "$GITLAB_URL" 2>&1)
+    HTTP_STATUS=${HTTP_RESPONSE: -3}
+    
+    if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "302" ] || [ "$HTTP_STATUS" = "401" ]; then
+        log_success "GitLab HTTP connectivity successful. Status: $HTTP_STATUS"
     else
+        log_error "GitLab HTTP connectivity failed. Status: $HTTP_STATUS, Response: ${HTTP_RESPONSE%???}"
         error_exit "GitLab server is not accessible at $GITLAB_URL"
     fi
-    # Test SSH connectivity
-    if ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "echo 'SSH test'" &> /dev/null; then
+    
+    # Test SSH connectivity with detailed debugging
+    log_info "Testing SSH connectivity to $GITLAB_IP..."
+    if ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 -o StrictHostKeyChecking=no ubuntu@$GITLAB_IP "echo 'SSH test successful'" 2>&1; then
         log_success "SSH connectivity to GitLab server verified"
     else
+        SSH_ERROR=$?
+        log_error "SSH connectivity to GitLab server failed with exit code: $SSH_ERROR"
         error_exit "SSH connectivity to GitLab server failed"
     fi
 }
@@ -203,43 +227,88 @@ configure_cicd_variables() {
 # Function to install and configure GitLab runner
 setup_gitlab_runner() {
     log_info "Setting up GitLab Runner..."
-    # Check if runner is already installed
-    if ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "command -v gitlab-runner" &> /dev/null; then
+    
+    # Check if runner is already installed with debugging
+    log_info "Checking if GitLab Runner is already installed..."
+    if ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "command -v gitlab-runner" 2>&1; then
         log_success "GitLab Runner is already installed"
     else
         log_info "Installing GitLab Runner..."
-        # Install GitLab Runner
-        ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
-            curl -L \"https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh\" | sudo bash && \
+        # Install GitLab Runner with detailed output
+        log_info "Running installation commands on GitLab server..."
+        INSTALL_OUTPUT=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+            echo 'Updating package lists...'
+            sudo apt-get update
+            echo 'Installing GitLab Runner...'
+            curl -L \"https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh\" | sudo bash
             sudo apt-get install gitlab-runner -y
-        " || error_exit "Failed to install GitLab Runner"
-        log_success "GitLab Runner installed"
+            echo 'Installation completed.'
+        " 2>&1)
+        
+        if [ $? -eq 0 ]; then
+            log_success "GitLab Runner installed successfully"
+            log_info "Installation output: $INSTALL_OUTPUT"
+        else
+            log_error "Failed to install GitLab Runner. Output: $INSTALL_OUTPUT"
+            error_exit "Failed to install GitLab Runner"
+        fi
     fi
-    # Get runner token
+    
+    # Get runner token with debugging
+    log_info "Getting GitLab runner token..."
     RUNNER_TOKEN=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID" | jq -r '.runners_token')
     if [ -z "$RUNNER_TOKEN" ] || [ "$RUNNER_TOKEN" == "null" ]; then
-        error_exit "Failed to get GitLab runner token. Response: $(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID")"
+        RAW_RESPONSE=$(curl -s -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "$GITLAB_URL/api/v4/projects/$PROJECT_ID")
+        log_error "Failed to get GitLab runner token. Response: $RAW_RESPONSE"
+        error_exit "Failed to get GitLab runner token"
     fi
-    # Register runner if not already registered
-    if ! ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner list | grep -q 'SageMaker CI/CD Runner'" 2>/dev/null; then
+    log_success "Runner token obtained: ${RUNNER_TOKEN:0:10}..."
+    
+    # Register runner if not already registered with debugging
+    log_info "Checking if runner is already registered..."
+    REGISTERED=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "sudo gitlab-runner list | grep -q 'SageMaker CI/CD Runner'; echo \$?" 2>/dev/null)
+    
+    if [ "$REGISTERED" -ne 0 ]; then
         log_info "Registering GitLab Runner..."
-        ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+        REGISTER_OUTPUT=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+            echo 'Registering GitLab Runner...'
             sudo gitlab-runner register --non-interactive \
                 --url $GITLAB_URL \
                 --registration-token $RUNNER_TOKEN \
                 --executor shell \
                 --description 'SageMaker CI/CD Runner' \
-                --tag-list 'sagemaker,ml,cicd'
-        " || error_exit "Failed to register GitLab Runner"
-        log_success "GitLab Runner registered"
+                --tag-list 'sagemaker,ml,cicd' \
+                --run-untagged='true' \
+                --locked='false'
+            echo 'Registration completed.'
+        " 2>&1)
+        
+        if [ $? -eq 0 ]; then
+            log_success "GitLab Runner registered successfully"
+            log_info "Registration output: $REGISTER_OUTPUT"
+        else
+            log_error "Failed to register GitLab Runner. Output: $REGISTER_OUTPUT"
+            error_exit "Failed to register GitLab Runner"
+        fi
     else
         log_success "GitLab Runner already registered"
     fi
-    # Start and enable runner
-    ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
-        sudo gitlab-runner start && \
+    
+    # Start and enable runner with debugging
+    log_info "Starting and enabling GitLab Runner service..."
+    SERVICE_OUTPUT=$(ssh -i ~/.ssh/id_rsa ubuntu@$GITLAB_IP "
+        sudo gitlab-runner start
         sudo systemctl enable gitlab-runner
-    " || log_warning "Failed to start/enable GitLab Runner"
+        echo 'Service status:'
+        sudo systemctl status gitlab-runner --no-pager -l
+    " 2>&1)
+    
+    if [ $? -eq 0 ]; then
+        log_success "GitLab Runner service started and enabled"
+        log_info "Service output: $SERVICE_OUTPUT"
+    else
+        log_warning "Failed to start/enable GitLab Runner. Output: $SERVICE_OUTPUT"
+    fi
 }
 
 # Function to install required tools on GitLab server

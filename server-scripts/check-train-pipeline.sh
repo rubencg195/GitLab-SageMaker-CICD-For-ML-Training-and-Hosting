@@ -331,14 +331,14 @@ $RUNNER_CONFIG"
         
         if [ -n "$RUNNER_CONFIG" ]; then
             # Check for run_untagged configuration
-            if ! echo "$RUNNER_CONFIG" | grep -E "^\[\[runners\]\].*run_untagged = true" &>/dev/null; then
+            if ! echo "$RUNNER_CONFIG" | grep -Pz "(?s)^\s*\[\[runners\]\].*?\n\s*url = \".*\"\n\s*id = .*\n\s*token = \".*\"\n\s*token_obtained_at = .*\n\s*token_expires_at = .*\n\s*executor = \"shell\"\nrun_untagged = true"; then
                 log_error "RUNNER CONFIGURATION ISSUE: Runners missing 'run_untagged = true' - jobs will be stuck!"
                 log_info "Fix: Add 'run_untagged = true' and 'locked = false' to each runner in config.toml"
                 return 1
             fi
             
             # Check for locked configuration
-            if ! echo "$RUNNER_CONFIG" | grep -E "^\[\[runners\]\].*locked = false" &>/dev/null; then
+            if ! echo "$RUNNER_CONFIG" | grep -Pz "(?s)^\s*\[\[runners\]\].*?\n\s*url = \".*\"\n\s*id = .*\n\s*token = \".*\"\n\s*token_obtained_at = .*\n\s*token_expires_at = .*\n\s*executor = \"shell\"\n\s*locked = false"; then
                 log_error "RUNNER CONFIGURATION ISSUE: Runners are 'locked = true' - jobs will be stuck!"
                 log_info "Fix: Add 'run_untagged = true' and 'locked = false' to each runner in config.toml"
                 return 1

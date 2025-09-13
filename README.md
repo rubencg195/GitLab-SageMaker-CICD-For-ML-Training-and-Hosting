@@ -351,7 +351,16 @@ GitLab-SageMaker-CICD-For-ML-Training-and-Hosting/
 - Use Docker executor instead of shell executor for better isolation
 - Check runner environment setup in `/etc/gitlab-runner/config.toml`
 
-#### 6. Pipeline Not Triggering
+#### 6. GitLab Runner Registration Issues (Internet Connectivity)
+**Symptoms**: Runner registration fails with `i/o timeout` or package installation errors during `configure-gitlab-cicd`
+**Solutions**:
+- **Verify internet egress**: Ensure GitLab server security group allows outbound internet access (0.0.0.0/0)
+- **Check package repositories**: Test connectivity to Ubuntu repositories: `curl -s http://us-east-1.ec2.archive.ubuntu.com/ubuntu`
+- **Test external connectivity**: Verify GitLab server can reach external sites: `curl -s https://packages.gitlab.com`
+- **Security group configuration**: Ensure `gitlab_sg` has egress rule: `0.0.0.0/0` for all protocols
+- **Apply security group changes**: Run `tofu apply -auto-approve` to update security group rules
+
+#### 7. Pipeline Not Triggering
 **Symptoms**: No pipelines appear after pushing code
 **Solutions**:
 - Verify `.gitlab-ci.yml` file exists in repository root
